@@ -1,6 +1,6 @@
 Package: pmslttools
 Title: Guided Proportional Multistate Lifetable Modelling Tools
-Version: 0.0.0.9000
+Version: 0.0.0.9001
 Authors@R: person("Upul", "Cooray", email = "upul@example.com", role = c("aut", "cre"))
 Author: Upul Cooray
 Maintainer: Upul Cooray <upul@example.com>

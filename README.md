@@ -38,3 +38,7 @@ spec <- pmslt_spec(
 
 draft_input_templates(spec, output_dir = "inputs_raw")
 ```
+
+This creates the CSV templates and a `README_inputs_raw.md` guide inside the
+output folder. The guide explains every file and every blank column that the
+student needs to fill before DisMod processing.

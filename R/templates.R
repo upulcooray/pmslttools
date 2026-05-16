@@ -6,12 +6,15 @@
 #' @param spec A `pmslt_spec` object.
 #' @param output_dir Directory where templates should be written.
 #' @param overwrite Logical. Should existing files be overwritten?
+#' @param write_guide Logical. Should a markdown guide explaining every template
+#'   column be written into `output_dir`?
 #'
 #' @return Invisibly returns a named list of generated data frames.
 #' @export
 draft_input_templates <- function(spec,
                                   output_dir = "pmslt_inputs_raw",
-                                  overwrite = FALSE) {
+                                  overwrite = FALSE,
+                                  write_guide = TRUE) {
   validate_spec(spec)
 
   if (!dir.exists(output_dir)) {
@@ -30,6 +33,15 @@ draft_input_templates <- function(spec,
       )
     }
     utils::write.csv(templates[[name]], path, row.names = FALSE, na = "")
+  }
+
+  if (isTRUE(write_guide)) {
+    write_input_template_guide(
+      spec = spec,
+      output_dir = output_dir,
+      templates = templates,
+      overwrite = overwrite
+    )
   }
 
   message("PMSLT input templates written to: ", normalizePath(output_dir))
