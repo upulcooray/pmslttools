@@ -4,6 +4,7 @@ test_that("template builder includes risk factor files", {
     mechanism = "risk_factor",
     diseases = c("CHD", "Stroke"),
     risk_factors = "Smoking",
+    risk_categories = list(Smoking = c("Never", "Current", "Former")),
     ages = age_bands(20, 30, by = 5),
     sexes = c("male", "female"),
     strata = "total",
@@ -15,6 +16,14 @@ test_that("template builder includes risk factor files", {
   expect_true("08_risk_factor_prevalence" %in% names(templates))
   expect_true("09_relative_risks" %in% names(templates))
   expect_true(all(c("acmr_BAU", "source", "notes") %in% names(templates[["02_all_cause_mortality"]])))
+  expect_equal(
+    sort(unique(templates[["08_risk_factor_prevalence"]]$risk_category)),
+    c("Current", "Former", "Never")
+  )
+  expect_equal(
+    sort(unique(templates[["09_relative_risks"]]$risk_category)),
+    c("Current", "Former", "Never")
+  )
 })
 
 test_that("draft_input_templates writes a beginner guide", {
@@ -23,6 +32,7 @@ test_that("draft_input_templates writes a beginner guide", {
     mechanism = "risk_factor",
     diseases = c("CHD", "Stroke"),
     risk_factors = "Smoking",
+    risk_categories = list(Smoking = c("Never", "Current", "Former")),
     ages = age_bands(20, 30, by = 5),
     sexes = c("male", "female"),
     strata = "total",
@@ -45,7 +55,8 @@ test_that("missing parameter diagnostics are plain-language", {
     intervention = "Tax",
     mechanism = "risk_factor",
     diseases = "CHD",
-    risk_factors = "Smoking"
+    risk_factors = "Smoking",
+    risk_categories = list(Smoking = c("Never", "Current"))
   )
 
   diagnosis <- diagnose_missing_parameters(spec = spec)

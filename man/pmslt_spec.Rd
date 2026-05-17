@@ -7,6 +7,7 @@ pmslt_spec(
   mechanism = c("risk_factor", "direct", "both"),
   diseases,
   risk_factors = character(),
+  risk_categories = NULL,
   ages = age_bands(0, 100, by = 5),
   sexes = c("male", "female"),
   strata = "total",
@@ -21,6 +22,10 @@ pmslt_spec(
 \item{mechanism}{One of \code{"risk_factor"}, \code{"direct"}, or \code{"both"}.}
 \item{diseases}{Character vector of diseases modelled.}
 \item{risk_factors}{Character vector of risk factors. Required when \code{mechanism} is \code{"risk_factor"} or \code{"both"}.}
+
+\item{risk_categories}{Risk-factor exposure categories. Use a named list,
+for example \code{list(Smoking = c("Never", "Current", "Former"))}. If the
+model has one risk factor, a plain character vector is also accepted.}
 \item{ages}{Data frame returned by \code{age_bands()}, or any data frame with \code{age_start} and \code{age_end} columns.}
 \item{sexes}{Character vector of sex labels.}
 \item{strata}{Character vector of population strata.}

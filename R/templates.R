@@ -116,7 +116,7 @@ expand_disease_grid <- function(spec) {
 model_spec_template <- function(spec) {
   data.frame(
     field = c(
-      "intervention", "mechanism", "diseases", "risk_factors", "sexes",
+      "intervention", "mechanism", "diseases", "risk_factors", "risk_categories", "sexes",
       "strata", "horizon", "base_year", "cost_effectiveness"
     ),
     value = c(
@@ -124,6 +124,14 @@ model_spec_template <- function(spec) {
       spec$mechanism,
       paste(spec$diseases, collapse = "; "),
       paste(spec$risk_factors, collapse = "; "),
+      paste(
+        vapply(
+          names(spec$risk_categories),
+          function(rf) paste0(rf, ": ", paste(spec$risk_categories[[rf]], collapse = " | ")),
+          character(1)
+        ),
+        collapse = "; "
+      ),
       paste(spec$sexes, collapse = "; "),
       paste(spec$strata, collapse = "; "),
       as.character(spec$horizon),
@@ -135,6 +143,7 @@ model_spec_template <- function(spec) {
       "risk_factor, direct, or both.",
       "Diseases causally affected by the intervention.",
       "Risk factors changed by the intervention, if relevant.",
+      "Exposure categories nested within each risk factor.",
       "Sex groups included in the model.",
       "Equity or population strata included in the model.",
       "Number of annual cycles.",
@@ -236,12 +245,11 @@ bau_trends_template <- function(disease_grid) {
 risk_factor_prevalence_template <- function(spec, time_grid) {
   out <- merge(
     time_grid,
-    data.frame(risk_factor = spec$risk_factors, stringsAsFactors = FALSE),
+    risk_category_grid(spec),
     all = TRUE
   )
   transform(
     out,
-    risk_category = NA_character_,
     prevalence_BAU = NA_real_,
     prevalence_intervention = NA_real_,
     source = NA_character_,
@@ -252,16 +260,15 @@ risk_factor_prevalence_template <- function(spec, time_grid) {
 relative_risk_template <- function(spec, base_grid) {
   out <- merge(
     base_grid,
-    expand.grid(
-      risk_factor = spec$risk_factors,
-      disease = spec$diseases,
-      stringsAsFactors = FALSE
+    merge(
+      risk_category_grid(spec),
+      data.frame(disease = spec$diseases, stringsAsFactors = FALSE),
+      all = TRUE
     ),
     all = TRUE
   )
   transform(
     out,
-    risk_category = NA_character_,
     rr = NA_real_,
     rr_lower = NA_real_,
     rr_upper = NA_real_,
@@ -269,6 +276,17 @@ relative_risk_template <- function(spec, base_grid) {
     source = NA_character_,
     notes = "Reference category should have RR = 1."
   )
+}
+
+risk_category_grid <- function(spec) {
+  rows <- lapply(names(spec$risk_categories), function(risk_factor) {
+    data.frame(
+      risk_factor = risk_factor,
+      risk_category = spec$risk_categories[[risk_factor]],
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
 }
 
 direct_effect_template <- function(spec, disease_grid) {

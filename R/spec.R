@@ -8,6 +8,9 @@
 #' @param diseases Character vector of diseases modelled.
 #' @param risk_factors Character vector of risk factors. Required when
 #'   `mechanism` is `"risk_factor"` or `"both"`.
+#' @param risk_categories Risk-factor exposure categories. Use a named list,
+#'   for example `list(Smoking = c("Never", "Current", "Former"))`. If the
+#'   model has one risk factor, a plain character vector is also accepted.
 #' @param ages Data frame returned by [age_bands()], or any data frame with
 #'   `age_start` and `age_end` columns.
 #' @param sexes Character vector of sex labels.
@@ -23,6 +26,7 @@ pmslt_spec <- function(intervention,
                        mechanism = c("risk_factor", "direct", "both"),
                        diseases,
                        risk_factors = character(),
+                       risk_categories = NULL,
                        ages = age_bands(0, 100, by = 5),
                        sexes = c("male", "female"),
                        strata = "total",
@@ -32,11 +36,13 @@ pmslt_spec <- function(intervention,
                        cost_effectiveness = FALSE) {
   mechanism <- match.arg(mechanism)
 
+  risk_factors <- unique(as.character(risk_factors))
   spec <- list(
     intervention = intervention,
     mechanism = mechanism,
     diseases = unique_nonempty_character(diseases, "diseases"),
-    risk_factors = unique(as.character(risk_factors)),
+    risk_factors = risk_factors,
+    risk_categories = validate_risk_categories(risk_categories, risk_factors, mechanism),
     ages = validate_age_table(ages),
     sexes = unique_nonempty_character(sexes, "sexes"),
     strata = unique_nonempty_character(strata, "strata"),
@@ -111,6 +117,14 @@ validate_spec <- function(spec) {
     )
   }
 
+  if (spec$mechanism %in% c("risk_factor", "both") &&
+      length(spec$risk_categories) == 0) {
+    stop(
+      "`risk_categories` must be supplied for risk-factor-mediated models.",
+      call. = FALSE
+    )
+  }
+
   if (!all(c("age_start", "age_end", "age_label") %in% names(spec$ages))) {
     stop("`ages` must contain age_start, age_end, and age_label.", call. = FALSE)
   }
@@ -126,6 +140,19 @@ print.pmslt_spec <- function(x, ...) {
   cat("Diseases: ", paste(x$diseases, collapse = ", "), "\n", sep = "")
   if (length(x$risk_factors) > 0) {
     cat("Risk factors: ", paste(x$risk_factors, collapse = ", "), "\n", sep = "")
+    cat(
+      "Risk categories: ",
+      paste(
+        vapply(
+          names(x$risk_categories),
+          function(rf) paste0(rf, " = ", paste(x$risk_categories[[rf]], collapse = ", ")),
+          character(1)
+        ),
+        collapse = "; "
+      ),
+      "\n",
+      sep = ""
+    )
   }
   cat("Ages: ", x$ages$age_label[1], " to ", x$ages$age_label[nrow(x$ages)], "\n", sep = "")
   cat("Sexes: ", paste(x$sexes, collapse = ", "), "\n", sep = "")
@@ -160,6 +187,61 @@ validate_age_table <- function(x) {
     )
   }
   x[, c("age_start", "age_end", "age_label")]
+}
+
+validate_risk_categories <- function(risk_categories, risk_factors, mechanism) {
+  if (!mechanism %in% c("risk_factor", "both")) {
+    return(list())
+  }
+
+  if (length(risk_factors) == 0) {
+    return(list())
+  }
+
+  if (is.null(risk_categories)) {
+    return(list())
+  }
+
+  if (is.character(risk_categories)) {
+    if (length(risk_factors) != 1) {
+      stop(
+        "`risk_categories` must be a named list when more than one risk factor is supplied.",
+        call. = FALSE
+      )
+    }
+    risk_categories <- stats::setNames(list(risk_categories), risk_factors)
+  }
+
+  if (!is.list(risk_categories) || is.null(names(risk_categories))) {
+    stop(
+      "`risk_categories` must be a named list, for example list(Smoking = c('Never', 'Current')).",
+      call. = FALSE
+    )
+  }
+
+  missing_names <- setdiff(risk_factors, names(risk_categories))
+  if (length(missing_names) > 0) {
+    stop(
+      "`risk_categories` is missing categories for: ",
+      paste(missing_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  extra_names <- setdiff(names(risk_categories), risk_factors)
+  if (length(extra_names) > 0) {
+    stop(
+      "`risk_categories` includes names that are not in `risk_factors`: ",
+      paste(extra_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  risk_categories <- risk_categories[risk_factors]
+  lapply(names(risk_categories), function(risk_factor) {
+    unique_nonempty_character(risk_categories[[risk_factor]], paste0("risk_categories$", risk_factor))
+  }) |>
+    stats::setNames(risk_factors)
 }
 
 validate_positive_integer <- function(x, name) {

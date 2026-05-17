@@ -52,6 +52,21 @@ input_template_guide_markdown <- function(spec, templates) {
     paste0("- Mechanism: ", spec$mechanism),
     paste0("- Diseases: ", paste(spec$diseases, collapse = ", ")),
     paste0("- Risk factors: ", if (length(spec$risk_factors) == 0) "none" else paste(spec$risk_factors, collapse = ", ")),
+    paste0(
+      "- Risk categories: ",
+      if (length(spec$risk_categories) == 0) {
+        "none"
+      } else {
+        paste(
+          vapply(
+            names(spec$risk_categories),
+            function(rf) paste0(rf, " = ", paste(spec$risk_categories[[rf]], collapse = ", ")),
+            character(1)
+          ),
+          collapse = "; "
+        )
+      }
+    ),
     paste0("- Sexes: ", paste(spec$sexes, collapse = ", ")),
     paste0("- Strata: ", paste(spec$strata, collapse = ", ")),
     paste0("- Simulation horizon: ", spec$horizon, " annual cycles"),
@@ -285,7 +300,7 @@ template_file_dictionary <- function() {
         stratum = id_stratum,
         time_step = "Generated simulation cycle, where 0 is the base year. Keep this as an integer annual time step.",
         risk_factor = "Generated risk factor name. For example: Smoking, BMI, sodium intake.",
-        risk_category = "Required. Enter the exposure category label. Examples for smoking: Never, Current, Former_1_5_years, Former_5_plus_years. The labels must match `09_relative_risks.csv`.",
+        risk_category = "Generated exposure category from `pmslt_spec(risk_categories = ...)`. Examples for smoking: Never, Current, Former_1_5_years, Former_5_plus_years. Regenerate the templates if categories are wrong.",
         prevalence_BAU = "Required for each category. Enter the BAU prevalence proportion for this age, sex, stratum, time step, and category.",
         prevalence_intervention = "Required for intervention modelling. Enter the intervention prevalence proportion for the same category. If the intervention has no effect in a row, this can equal `prevalence_BAU`.",
         source = id_source,
@@ -308,7 +323,7 @@ template_file_dictionary <- function() {
         stratum = id_stratum,
         risk_factor = "Generated risk factor name. Must match `08_risk_factor_prevalence.csv`.",
         disease = id_disease,
-        risk_category = "Required. Enter the category label that the RR applies to. Must exactly match `08_risk_factor_prevalence.csv`.",
+        risk_category = "Generated exposure category from `pmslt_spec(risk_categories = ...)`. Must exactly match `08_risk_factor_prevalence.csv` because both files are generated from the same specification.",
         rr = "Required. Enter the relative risk for this category and disease. The reference category should be 1. Values above 1 increase disease incidence; values below 1 are protective.",
         rr_lower = "Optional. Lower uncertainty bound for the relative risk.",
         rr_upper = "Optional. Upper uncertainty bound for the relative risk.",

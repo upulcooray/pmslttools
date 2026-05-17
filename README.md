@@ -30,6 +30,7 @@ spec <- pmslt_spec(
   mechanism = "risk_factor",
   diseases = c("CHD", "Stroke"),
   risk_factors = "Smoking",
+  risk_categories = list(Smoking = c("Never", "Current", "Former")),
   ages = age_bands(20, 100, by = 5),
   sexes = c("male", "female"),
   strata = "total",

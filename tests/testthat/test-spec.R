@@ -9,9 +9,22 @@ test_that("risk factor specifications require risk factors", {
       intervention = "Tax",
       mechanism = "risk_factor",
       diseases = "CHD",
-      risk_factors = character()
+      risk_factors = character(),
+      risk_categories = character()
     ),
     "risk_factors"
+  )
+})
+
+test_that("risk factor specifications require categories", {
+  expect_error(
+    pmslt_spec(
+      intervention = "Tax",
+      mechanism = "risk_factor",
+      diseases = "CHD",
+      risk_factors = "Smoking"
+    ),
+    "risk_categories"
   )
 })
 
@@ -20,8 +33,20 @@ test_that("valid specification is created", {
     intervention = "Tax",
     mechanism = "risk_factor",
     diseases = "CHD",
-    risk_factors = "Smoking"
+    risk_factors = "Smoking",
+    risk_categories = list(Smoking = c("Never", "Current"))
   )
   expect_s3_class(spec, "pmslt_spec")
   expect_true(validate_spec(spec))
+})
+
+test_that("single risk factor accepts character risk_categories", {
+  spec <- pmslt_spec(
+    intervention = "Tax",
+    mechanism = "risk_factor",
+    diseases = "CHD",
+    risk_factors = "Smoking",
+    risk_categories = c("Never", "Current")
+  )
+  expect_equal(spec$risk_categories$Smoking, c("Never", "Current"))
 })
