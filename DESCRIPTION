@@ -1,6 +1,6 @@
 Package: pmslttools
 Title: Guided Proportional Multistate Lifetable Modelling Tools
-Version: 0.0.0.9004
+Version: 0.0.0.9005
 Authors@R: person("Upul", "Cooray", email = "upul@example.com", role = c("aut", "cre"))
 Author: Upul Cooray
 Maintainer: Upul Cooray <upul@example.com>
@@ -16,6 +16,7 @@ RoxygenNote: 7.3.2
 Imports:
     grDevices,
     graphics,
+    stats,
     utils
 Suggests:
     testthat (>= 3.0.0)

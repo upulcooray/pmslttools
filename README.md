@@ -59,8 +59,15 @@ conditional, or optional.
 generate_mock_pmslt_inputs("mock_inputs_raw")
 mock_dismod_output("mock_inputs_raw")
 plot_dismod_corrections("mock_inputs_raw/mock_dismod_output")
+plot_dismod_age_curve("mock_inputs_raw/mock_dismod_output")
 ```
 
 This creates mock raw inputs, a teaching-only mock DisMod output, and a PNG plot
-comparing raw epidemiological parameters with corrected values. It is for
-learning the workflow shape only, not a substitute for real DisMod-MR.
+comparing raw epidemiological parameters with corrected values. It also creates
+single-year continuous-age predictions and PMSLT age-grid predictions:
+
+- `mock_dismod_output_continuous.csv`
+- `mock_dismod_output_pmslt_ages.csv`
+- `dismod_continuous_age_curve.png`
+
+It is for learning the workflow shape only, not a substitute for real DisMod-MR.

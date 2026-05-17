@@ -5,7 +5,8 @@
 mock_dismod_output(
   input_dir = "mock_inputs_raw",
   output_dir = file.path(input_dir, "mock_dismod_output"),
-  overwrite = TRUE
+  overwrite = TRUE,
+  continuous_age = TRUE
 )
 }
 \arguments{
@@ -15,9 +16,13 @@ or \code{draft_input_templates()}.}
 \item{output_dir}{Directory where mock DisMod outputs should be written.}
 
 \item{overwrite}{Logical. Should existing files be overwritten?}
+
+\item{continuous_age}{Logical. Should continuous single-year age outputs and
+PMSLT age-grid predictions be generated?}
 }
 \value{
-Invisibly returns a list with \code{wide}, \code{long}, and \code{diagnostics}.
+Invisibly returns a list with \code{wide}, \code{long}, \code{diagnostics},
+\code{continuous}, and \code{pmslt_ages}.
 }
 \description{
 This function creates deterministic, teaching-only outputs that look like a

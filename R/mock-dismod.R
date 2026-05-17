@@ -100,12 +100,16 @@ generate_mock_pmslt_inputs <- function(output_dir = "mock_inputs_raw",
 #'   or [draft_input_templates()].
 #' @param output_dir Directory where mock DisMod outputs should be written.
 #' @param overwrite Logical. Should existing files be overwritten?
+#' @param continuous_age Logical. Should continuous single-year age outputs and
+#'   PMSLT age-grid predictions be generated?
 #'
-#' @return Invisibly returns a list with `wide`, `long`, and `diagnostics`.
+#' @return Invisibly returns a list with `wide`, `long`, `diagnostics`,
+#'   `continuous`, and `pmslt_ages`.
 #' @export
 mock_dismod_output <- function(input_dir = "mock_inputs_raw",
                                output_dir = file.path(input_dir, "mock_dismod_output"),
-                               overwrite = TRUE) {
+                               overwrite = TRUE,
+                               continuous_age = TRUE) {
   raw_path <- file.path(input_dir, "05_disease_epidemiology_raw.csv")
   if (!file.exists(raw_path)) {
     stop("Missing raw disease file: ", raw_path, call. = FALSE)
@@ -152,8 +156,245 @@ mock_dismod_output <- function(input_dir = "mock_inputs_raw",
   diagnostics <- mock_dismod_diagnostics(wide)
 
   write_mock_dismod_outputs(output_dir, wide, long, diagnostics, overwrite)
+  continuous <- NULL
+  pmslt_ages <- NULL
+  if (isTRUE(continuous_age)) {
+    continuous <- smooth_dismod_age_curve(output_dir, overwrite = overwrite)
+    raw_ages <- unique(raw[c("age_start", "age_end", "age_label")])
+    pmslt_ages <- predict_dismod_to_age_grid(output_dir, ages = raw_ages, overwrite = overwrite)
+  }
   message("Mock DisMod outputs written to: ", normalizePath(output_dir))
-  invisible(list(wide = wide, long = long, diagnostics = diagnostics))
+  invisible(list(
+    wide = wide,
+    long = long,
+    diagnostics = diagnostics,
+    continuous = continuous,
+    pmslt_ages = pmslt_ages
+  ))
+}
+
+#' Smooth mock DisMod outputs over continuous age
+#'
+#' Fits simple parameter-specific age curves from mock DisMod corrected values
+#' and predicts single-year age values. This represents the conceptual step
+#' where DisMod smooths epidemiological parameters across continuous age.
+#'
+#' @param dismod_output_dir Directory created by [mock_dismod_output()].
+#' @param output_file CSV path for continuous-age predictions.
+#' @param age_min Minimum single-year age to predict. Defaults to the minimum
+#'   raw age start.
+#' @param age_max Maximum single-year age to predict. Defaults to the maximum
+#'   raw age end.
+#' @param parameters Parameters to smooth.
+#' @param overwrite Logical. Should existing output be overwritten?
+#'
+#' @return Invisibly returns the continuous-age data frame.
+#' @export
+smooth_dismod_age_curve <- function(dismod_output_dir,
+                                    output_file = file.path(dismod_output_dir, "mock_dismod_output_continuous.csv"),
+                                    age_min = NULL,
+                                    age_max = NULL,
+                                    parameters = c(
+                                      "incidence_rate", "prevalence", "remission_rate",
+                                      "excess_mortality_rate", "case_fatality_rate"
+                                    ),
+                                    overwrite = TRUE) {
+  long_path <- file.path(dismod_output_dir, "mock_dismod_output_long.csv")
+  if (!file.exists(long_path)) {
+    stop("Missing mock DisMod long output: ", long_path, call. = FALSE)
+  }
+  if (file.exists(output_file) && !isTRUE(overwrite)) {
+    stop("File already exists: ", output_file, ". Use `overwrite = TRUE` to replace it.", call. = FALSE)
+  }
+
+  data <- utils::read.csv(long_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  data <- data[data$parameter %in% parameters, , drop = FALSE]
+  data$age_mid <- mock_age_midpoint(data)
+  if (is.null(age_min)) {
+    age_min <- floor(min(as.numeric(data$age_start), na.rm = TRUE))
+  }
+  if (is.null(age_max)) {
+    age_max <- ceiling(max(as.numeric(data$age_end), na.rm = TRUE))
+  }
+  age <- seq.int(age_min, age_max)
+
+  group_cols <- c("sex", "stratum", "disease", "parameter")
+  groups <- unique(data[group_cols])
+  rows <- lapply(seq_len(nrow(groups)), function(i) {
+    group <- groups[i, , drop = FALSE]
+    subset <- data[
+      data$sex == group$sex &
+        data$stratum == group$stratum &
+        data$disease == group$disease &
+        data$parameter == group$parameter,
+      ,
+      drop = FALSE
+    ]
+    value <- predict_smooth_parameter(
+      x = subset$age_mid,
+      y = subset$dismod_mean,
+      xout = age,
+      parameter = group$parameter
+    )
+    group_expanded <- group[rep(1, length(age)), , drop = FALSE]
+    row.names(group_expanded) <- NULL
+    data.frame(
+      group_expanded,
+      age = age,
+      dismod_smoothed = value,
+      smoothing_method = smoothing_method_label(subset),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  out <- do.call(rbind, rows)
+  utils::write.csv(out, output_file, row.names = FALSE, na = "")
+  invisible(out)
+}
+
+#' Predict continuous-age mock DisMod curves to a PMSLT age grid
+#'
+#' Converts single-year smoothed values into the PMSLT model age bands. By
+#' default this averages all single-year ages inside each PMSLT age band.
+#'
+#' @param dismod_output_dir Directory created by [mock_dismod_output()].
+#' @param ages Age grid. Defaults to age bands inferred from
+#'   `mock_dismod_output_long.csv`.
+#' @param continuous_file CSV path created by [smooth_dismod_age_curve()].
+#' @param output_file CSV path for PMSLT age-grid predictions.
+#' @param method One of `"band_mean"` or `"midpoint"`.
+#' @param overwrite Logical. Should existing output be overwritten?
+#'
+#' @return Invisibly returns the PMSLT-age data frame.
+#' @export
+predict_dismod_to_age_grid <- function(dismod_output_dir,
+                                       ages = NULL,
+                                       continuous_file = file.path(dismod_output_dir, "mock_dismod_output_continuous.csv"),
+                                       output_file = file.path(dismod_output_dir, "mock_dismod_output_pmslt_ages.csv"),
+                                       method = c("band_mean", "midpoint"),
+                                       overwrite = TRUE) {
+  method <- match.arg(method)
+  if (!file.exists(continuous_file)) {
+    smooth_dismod_age_curve(
+      dismod_output_dir = dismod_output_dir,
+      output_file = continuous_file,
+      overwrite = overwrite
+    )
+  }
+  if (file.exists(output_file) && !isTRUE(overwrite)) {
+    stop("File already exists: ", output_file, ". Use `overwrite = TRUE` to replace it.", call. = FALSE)
+  }
+  continuous <- utils::read.csv(continuous_file, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  if (is.null(ages)) {
+    long_path <- file.path(dismod_output_dir, "mock_dismod_output_long.csv")
+    raw <- utils::read.csv(long_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+    ages <- unique(raw[c("age_start", "age_end", "age_label")])
+  } else {
+    ages <- validate_age_table(ages)
+  }
+
+  group_cols <- c("sex", "stratum", "disease", "parameter")
+  groups <- unique(continuous[group_cols])
+  rows <- lapply(seq_len(nrow(groups)), function(i) {
+    group <- groups[i, , drop = FALSE]
+    curve <- continuous[
+      continuous$sex == group$sex &
+        continuous$stratum == group$stratum &
+        continuous$disease == group$disease &
+        continuous$parameter == group$parameter,
+      ,
+      drop = FALSE
+    ]
+    band_rows <- lapply(seq_len(nrow(ages)), function(j) {
+      age_row <- ages[j, , drop = FALSE]
+      age_end <- as.numeric(age_row$age_end)
+      if (is.infinite(age_end)) {
+        age_end <- max(curve$age, na.rm = TRUE)
+      }
+      if (method == "midpoint") {
+        target_age <- round((as.numeric(age_row$age_start) + age_end) / 2)
+        selected <- curve[curve$age == target_age, "dismod_smoothed"]
+        if (length(selected) == 0 || is.na(selected[[1]])) {
+          selected <- stats::approx(curve$age, curve$dismod_smoothed, xout = target_age, rule = 2)$y
+        }
+        value <- selected[[1]]
+      } else {
+        selected <- curve[curve$age >= age_row$age_start & curve$age <= age_end, "dismod_smoothed"]
+        value <- mean(selected, na.rm = TRUE)
+      }
+      group_one <- group
+      row.names(group_one) <- NULL
+      data.frame(
+        age_row,
+        group_one,
+        dismod_age_grid_mean = round(value, 8),
+        age_prediction_method = method,
+        stringsAsFactors = FALSE
+      )
+    })
+    do.call(rbind, band_rows)
+  })
+
+  out <- do.call(rbind, rows)
+  utils::write.csv(out, output_file, row.names = FALSE, na = "")
+  invisible(out)
+}
+
+#' Plot raw points, continuous DisMod curve, and PMSLT age predictions
+#'
+#' @param dismod_output_dir Directory created by [mock_dismod_output()].
+#' @param output_file Optional PNG output path.
+#' @param parameters Parameters to plot.
+#' @param disease Optional disease filter.
+#' @param sex Optional sex filter.
+#'
+#' @return Invisibly returns a list with raw, continuous, and PMSLT-age data.
+#' @export
+plot_dismod_age_curve <- function(dismod_output_dir,
+                                  output_file = file.path(dismod_output_dir, "dismod_continuous_age_curve.png"),
+                                  parameters = c("incidence_rate", "prevalence"),
+                                  disease = NULL,
+                                  sex = NULL) {
+  raw_path <- file.path(dismod_output_dir, "mock_dismod_output_long.csv")
+  continuous_path <- file.path(dismod_output_dir, "mock_dismod_output_continuous.csv")
+  pmslt_path <- file.path(dismod_output_dir, "mock_dismod_output_pmslt_ages.csv")
+  if (!file.exists(raw_path)) {
+    stop("Missing mock DisMod long output: ", raw_path, call. = FALSE)
+  }
+  if (!file.exists(continuous_path)) {
+    smooth_dismod_age_curve(dismod_output_dir)
+  }
+  if (!file.exists(pmslt_path)) {
+    predict_dismod_to_age_grid(dismod_output_dir)
+  }
+
+  raw <- utils::read.csv(raw_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  continuous <- utils::read.csv(continuous_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  pmslt <- utils::read.csv(pmslt_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  raw$age_mid <- mock_age_midpoint(raw)
+  pmslt$age_mid <- mock_age_midpoint(pmslt)
+
+  raw <- filter_curve_data(raw, parameters, disease, sex)
+  continuous <- filter_curve_data(continuous, parameters, disease, sex)
+  pmslt <- filter_curve_data(pmslt, parameters, disease, sex)
+  if (nrow(raw) == 0 || nrow(continuous) == 0 || nrow(pmslt) == 0) {
+    stop("No rows to plot after filtering.", call. = FALSE)
+  }
+
+  if (!is.null(output_file)) {
+    grDevices::png(output_file, width = 1400, height = 900, res = 150)
+    device_open <- TRUE
+  } else {
+    device_open <- FALSE
+  }
+  plot_continuous_age_curve_base(raw, continuous, pmslt)
+  if (isTRUE(device_open)) {
+    grDevices::dev.off()
+  }
+  if (!is.null(output_file)) {
+    message("Continuous age curve plot written to: ", normalizePath(output_file))
+  }
+  invisible(list(raw = raw, continuous = continuous, pmslt_ages = pmslt))
 }
 
 #' Plot raw versus mock DisMod-corrected epidemiological parameters
@@ -382,6 +623,108 @@ plot_mock_corrections_base <- function(data) {
       lty = 1,
       bty = "n",
       cex = 0.8
+    )
+  }
+}
+
+predict_smooth_parameter <- function(x, y, xout, parameter) {
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  keep <- !is.na(x) & !is.na(y) & is.finite(x) & is.finite(y)
+  x <- x[keep]
+  y <- y[keep]
+  if (length(x) == 0) {
+    return(rep(NA_real_, length(xout)))
+  }
+  if (length(unique(x)) == 1) {
+    return(rep(y[[1]], length(xout)))
+  }
+
+  order_index <- order(x)
+  x <- x[order_index]
+  y <- y[order_index]
+  if (parameter == "prevalence") {
+    bounded <- pmin(0.999999, pmax(0.000001, y))
+    transformed <- stats::qlogis(bounded)
+    predicted <- smooth_on_scale(x, transformed, xout)
+    return(round(stats::plogis(predicted), 8))
+  }
+
+  if (all(y > 0)) {
+    predicted <- smooth_on_scale(x, log(y), xout)
+    return(round(pmax(0, exp(predicted)), 8))
+  }
+
+  round(pmax(0, smooth_on_scale(x, y, xout)), 8)
+}
+
+smooth_on_scale <- function(x, y, xout) {
+  if (length(unique(x)) >= 4) {
+    fit <- stats::smooth.spline(x = x, y = y, spar = 0.55)
+    return(stats::predict(fit, x = xout)$y)
+  }
+  stats::approx(x = x, y = y, xout = xout, rule = 2)$y
+}
+
+smoothing_method_label <- function(data) {
+  if (length(unique(data$age_mid[!is.na(data$dismod_mean)])) >= 4) {
+    "smooth_spline"
+  } else {
+    "linear_interpolation"
+  }
+}
+
+filter_curve_data <- function(data, parameters, disease, sex) {
+  data <- data[data$parameter %in% parameters, , drop = FALSE]
+  if (!is.null(disease)) {
+    data <- data[data$disease %in% disease, , drop = FALSE]
+  }
+  if (!is.null(sex)) {
+    data <- data[data$sex %in% sex, , drop = FALSE]
+  }
+  data
+}
+
+plot_continuous_age_curve_base <- function(raw, continuous, pmslt) {
+  raw$panel <- paste(raw$disease, raw$parameter, sep = " - ")
+  continuous$panel <- paste(continuous$disease, continuous$parameter, sep = " - ")
+  pmslt$panel <- paste(pmslt$disease, pmslt$parameter, sep = " - ")
+  panels <- unique(raw$panel)
+  old_par <- graphics::par(no.readonly = TRUE)
+  on.exit(graphics::par(old_par), add = TRUE)
+  graphics::par(mfrow = grDevices::n2mfrow(length(panels)), mar = c(4, 4, 3, 1))
+
+  for (panel in panels) {
+    raw_panel <- raw[raw$panel == panel, , drop = FALSE]
+    continuous_panel <- continuous[continuous$panel == panel, , drop = FALSE]
+    pmslt_panel <- pmslt[pmslt$panel == panel, , drop = FALSE]
+    y_lim <- range(
+      c(raw_panel$raw_value, raw_panel$dismod_mean, continuous_panel$dismod_smoothed, pmslt_panel$dismod_age_grid_mean),
+      na.rm = TRUE
+    )
+    graphics::plot(
+      continuous_panel$age,
+      continuous_panel$dismod_smoothed,
+      type = "l",
+      lwd = 2,
+      col = "#005F73",
+      ylim = y_lim,
+      xlab = "Age",
+      ylab = "Value",
+      main = panel
+    )
+    graphics::points(raw_panel$age_mid, raw_panel$raw_value, pch = 16, col = "#9E2A2B")
+    graphics::points(raw_panel$age_mid, raw_panel$dismod_mean, pch = 17, col = "#0A9396")
+    graphics::points(pmslt_panel$age_mid, pmslt_panel$dismod_age_grid_mean, pch = 15, col = "#EE9B00")
+    graphics::legend(
+      "topleft",
+      legend = c("Continuous curve", "Raw band input", "Corrected band value", "PMSLT age-grid value"),
+      col = c("#005F73", "#9E2A2B", "#0A9396", "#EE9B00"),
+      pch = c(NA, 16, 17, 15),
+      lty = c(1, NA, NA, NA),
+      lwd = c(2, NA, NA, NA),
+      bty = "n",
+      cex = 0.75
     )
   }
 }
