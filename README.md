@@ -52,3 +52,15 @@ output folder. The guide explains every file and every blank column that the
 student needs to fill before DisMod processing. The output also includes
 `00_column_dictionary.csv`, which marks columns as generated, required,
 conditional, or optional.
+
+## Mock DisMod demonstration
+
+```r
+generate_mock_pmslt_inputs("mock_inputs_raw")
+mock_dismod_output("mock_inputs_raw")
+plot_dismod_corrections("mock_inputs_raw/mock_dismod_output")
+```
+
+This creates mock raw inputs, a teaching-only mock DisMod output, and a PNG plot
+comparing raw epidemiological parameters with corrected values. It is for
+learning the workflow shape only, not a substitute for real DisMod-MR.
