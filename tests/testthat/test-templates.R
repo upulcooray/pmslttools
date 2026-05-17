@@ -1,6 +1,7 @@
 test_that("template builder includes risk factor files", {
   spec <- pmslt_spec(
     intervention = "Tax",
+    intervention_arms = c("Tax", "Tax plus cessation"),
     mechanism = "risk_factor",
     diseases = c("CHD", "Stroke"),
     risk_factors = "Smoking",
@@ -27,6 +28,10 @@ test_that("template builder includes risk factor files", {
   expect_equal(
     sort(unique(templates[["08_risk_factor_prevalence"]]$risk_category)),
     c("Current", "Former", "Never")
+  )
+  expect_equal(
+    sort(unique(templates[["08_risk_factor_prevalence"]]$intervention)),
+    c("Tax", "Tax plus cessation")
   )
   expect_equal(
     sort(unique(templates[["09_relative_risks"]]$risk_category)),

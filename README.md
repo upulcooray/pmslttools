@@ -32,7 +32,8 @@ library(pmslttools)
 
 spec <- pmslt_spec(
   intervention = "Tobacco tax",
-  mechanism = "risk_factor",
+  intervention_arms = c("Tax only", "Tax plus acute care"),
+  mechanism = "both",
   diseases = c("CHD", "Stroke"),
   risk_factors = "Smoking",
   risk_categories = list(Smoking = c("Never", "Current", "Former")),
@@ -88,3 +89,22 @@ disease_deltas <- run_pmslt_disease_lifetable(disease_epi)
 The package treats this post-DisMod file as the canonical disease input for
 subsequent PMSLT modules. Raw disease inputs are retained as an audit trail, not
 as the direct model input.
+
+## Intervention workflow
+
+For risk-factor interventions, `calculate_pif_from_inputs()` converts
+`08_risk_factor_prevalence.csv` and `09_relative_risks.csv` into the PIF table
+used by the disease lifetable. For interventions that directly change disease
+incidence, case fatality, or morbidity, fill `10_direct_intervention_effects.csv`.
+Multiple intervention arms can live in the same template folder:
+
+```r
+results <- run_pmslt_interventions(
+  disease_epi = "mock_inputs_raw/mock_dismod_output/pmslt_disease_epi.csv",
+  risk_prevalence = "mock_inputs_raw/08_risk_factor_prevalence.csv",
+  relative_risks = "mock_inputs_raw/09_relative_risks.csv",
+  direct_effects = "mock_inputs_raw/10_direct_intervention_effects.csv"
+)
+```
+
+This supports PIF-only, direct-only, and combined intervention scenarios.

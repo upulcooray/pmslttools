@@ -119,11 +119,12 @@ expand_disease_grid <- function(spec) {
 model_spec_template <- function(spec) {
   data.frame(
     field = c(
-      "intervention", "mechanism", "diseases", "risk_factors", "risk_categories", "sexes",
+      "intervention", "intervention_arms", "mechanism", "diseases", "risk_factors", "risk_categories", "sexes",
       "strata", "horizon", "base_year", "cost_effectiveness"
     ),
     value = c(
       spec$intervention,
+      paste(spec$intervention_arms, collapse = "; "),
       spec$mechanism,
       paste(spec$diseases, collapse = "; "),
       paste(spec$risk_factors, collapse = "; "),
@@ -143,6 +144,7 @@ model_spec_template <- function(spec) {
     ),
     notes = c(
       "Short name of the intervention being modelled.",
+      "Named intervention scenarios compared with BAU.",
       "risk_factor, direct, or both.",
       "Diseases causally affected by the intervention.",
       "Risk factors changed by the intervention, if relevant.",
@@ -247,8 +249,8 @@ bau_trends_template <- function(disease_grid) {
 
 risk_factor_prevalence_template <- function(spec, time_grid) {
   out <- merge(
-    time_grid,
-    risk_category_grid(spec),
+    merge(time_grid, risk_category_grid(spec), all = TRUE),
+    data.frame(intervention = spec$intervention_arms, stringsAsFactors = FALSE),
     all = TRUE
   )
   transform(
@@ -293,7 +295,11 @@ risk_category_grid <- function(spec) {
 }
 
 direct_effect_template <- function(spec, disease_grid) {
-  unique_rows <- unique(disease_grid)
+  unique_rows <- merge(
+    unique(disease_grid),
+    data.frame(intervention = spec$intervention_arms, stringsAsFactors = FALSE),
+    all = TRUE
+  )
   transform(
     unique_rows,
     incidence_rr = NA_real_,

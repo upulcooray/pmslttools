@@ -31,12 +31,14 @@ test_that("risk factor specifications require categories", {
 test_that("valid specification is created", {
   spec <- pmslt_spec(
     intervention = "Tax",
+    intervention_arms = c("Tax", "Tax plus cessation"),
     mechanism = "risk_factor",
     diseases = "CHD",
     risk_factors = "Smoking",
     risk_categories = list(Smoking = c("Never", "Current"))
   )
   expect_s3_class(spec, "pmslt_spec")
+  expect_equal(spec$intervention_arms, c("Tax", "Tax plus cessation"))
   expect_true(validate_spec(spec))
 })
 

@@ -97,6 +97,12 @@ validate_pmslt_disease_inputs <- function(data) {
 #'   `pmslt_disease_epi.csv`.
 #' @param pif_data Optional data frame with `age_start`, `sex`, `stratum`,
 #'   `disease`, `time_step`, and `pif`. If omitted, intervention equals BAU.
+#' @param direct_effect_data Optional data frame with direct disease effects.
+#'   Expected columns are `age_start`, `sex`, `stratum`, `disease`,
+#'   `incidence_rr`, `cfr_rr`, `morbidity_rr`, and `coverage`. If an
+#'   `intervention` column is present, use `intervention` to select one arm.
+#' @param intervention Optional intervention arm name used to filter PIF and
+#'   direct-effect data when those inputs contain multiple scenarios.
 #' @param cohort_size Radix cohort size for each disease lifetable.
 #'
 #' @return A data frame with BAU/intervention disease lifetable outputs and
@@ -104,6 +110,8 @@ validate_pmslt_disease_inputs <- function(data) {
 #' @export
 run_pmslt_disease_lifetable <- function(disease_epi,
                                         pif_data = NULL,
+                                        direct_effect_data = NULL,
+                                        intervention = NULL,
                                         cohort_size = 1000) {
   if (is.character(disease_epi) && length(disease_epi) == 1) {
     disease_epi <- read_pmslt_disease_inputs(disease_epi)
@@ -116,6 +124,7 @@ run_pmslt_disease_lifetable <- function(disease_epi,
   if (is.null(pif_data)) {
     data$pif <- 0
   } else {
+    pif_data <- filter_intervention_rows(pif_data, intervention, "pif_data")
     require_columns(pif_data, c("age_start", "sex", "stratum", "disease", "time_step", "pif"), "pif_data")
     data <- merge(
       data,
@@ -127,14 +136,19 @@ run_pmslt_disease_lifetable <- function(disease_epi,
     data$pif[is.na(data$pif)] <- 0
   }
   data$pif <- pmax(-Inf, pmin(1, as.numeric(data$pif)))
-  data$incidence_Int <- data$incidence_BAU * (1 - data$pif)
+  data <- add_direct_effect_multipliers(data, direct_effect_data, intervention)
+  data$incidence_Int <- data$incidence_BAU * (1 - data$pif) * data$incidence_multiplier
+  data$case_fatality_Int <- data$case_fatality_BAU * data$cfr_multiplier
+  data$disability_weight_Int <- data$disability_weight * data$morbidity_multiplier
 
   split_key <- paste(data$disease, data$age_start, data$sex, data$stratum, sep = "\r")
   groups <- split(data, split_key)
   rows <- lapply(groups, function(group) run_one_disease_group(group, cohort_size))
   out <- do.call(rbind, rows)
   row.names(out) <- NULL
-  out[order(out$disease, out$sex, out$stratum, out$age_start, out$time_step), ]
+  out <- out[order(out$disease, out$sex, out$stratum, out$age_start, out$time_step), ]
+  row.names(out) <- NULL
+  out
 }
 
 run_one_disease_group <- function(group, cohort_size) {
@@ -166,7 +180,7 @@ run_one_disease_group <- function(group, cohort_size) {
         dead = d_int[[i - 1]],
         incidence = group$incidence_Int[[i]],
         remission = group$remission_rate[[i]],
-        fatality = group$case_fatality_BAU[[i]]
+        fatality = group$case_fatality_Int[[i]]
       )
       s_bau[[i]] <- bau$susceptible
       c_bau[[i]] <- bau$diseased
@@ -186,13 +200,16 @@ run_one_disease_group <- function(group, cohort_size) {
   mort_bau <- ifelse(alive_bau > 0, deaths_bau / alive_bau, 0)
   mort_int <- ifelse(alive_int > 0, deaths_int / alive_int, 0)
   morb_bau <- prev_bau * group$disability_weight
-  morb_int <- prev_int * group$disability_weight
+  morb_int <- prev_int * group$disability_weight_Int
 
   data.frame(
     group[c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "time_step")],
     incidence_BAU = group$incidence_BAU,
     incidence_Int = group$incidence_Int,
     pif = group$pif,
+    incidence_multiplier = group$incidence_multiplier,
+    cfr_multiplier = group$cfr_multiplier,
+    morbidity_multiplier = group$morbidity_multiplier,
     susceptible_BAU = s_bau,
     diseased_BAU = c_bau,
     dead_BAU = d_bau,
@@ -209,6 +226,233 @@ run_one_disease_group <- function(group, cohort_size) {
     delta_morbidity = morb_int - morb_bau,
     stringsAsFactors = FALSE
   )
+}
+
+#' Calculate population impact fractions from raw template inputs
+#'
+#' This converts `08_risk_factor_prevalence.csv` and `09_relative_risks.csv`
+#' into the compact PIF table used by the disease lifetable. It supports
+#' multiple intervention arms in the same prevalence file.
+#'
+#' @param risk_prevalence Data frame or CSV path for
+#'   `08_risk_factor_prevalence.csv`.
+#' @param relative_risks Data frame or CSV path for `09_relative_risks.csv`.
+#'
+#' @return A data frame with one PIF per intervention, age, sex, stratum,
+#'   disease, and time step.
+#' @export
+calculate_pif_from_inputs <- function(risk_prevalence, relative_risks) {
+  risk_prevalence <- read_if_path(risk_prevalence, "risk_prevalence")
+  relative_risks <- read_if_path(relative_risks, "relative_risks")
+
+  require_columns(
+    risk_prevalence,
+    c(
+      "age_start", "age_end", "age_label", "sex", "stratum", "time_step",
+      "intervention", "risk_factor", "risk_category", "prevalence_BAU",
+      "prevalence_intervention"
+    ),
+    "08_risk_factor_prevalence.csv"
+  )
+  require_columns(
+    relative_risks,
+    c("age_start", "sex", "stratum", "risk_factor", "risk_category", "disease", "rr"),
+    "09_relative_risks.csv"
+  )
+
+  join_cols <- c("age_start", "sex", "stratum", "risk_factor", "risk_category")
+  joined <- merge(
+    risk_prevalence,
+    relative_risks[c(join_cols, "disease", "rr")],
+    by = join_cols,
+    all.x = TRUE,
+    sort = FALSE
+  )
+
+  missing_rr <- is.na(joined$rr)
+  if (any(missing_rr)) {
+    examples <- unique(joined[missing_rr, join_cols, drop = FALSE])
+    stop(
+      "Missing relative risk rows for ",
+      nrow(examples),
+      " risk prevalence combination(s). Check risk_factor and risk_category labels.",
+      call. = FALSE
+    )
+  }
+
+  joined$prevalence_BAU <- as.numeric(joined$prevalence_BAU)
+  joined$prevalence_intervention <- as.numeric(joined$prevalence_intervention)
+  joined$rr <- as.numeric(joined$rr)
+  if (any(is.na(joined$prevalence_BAU) | is.na(joined$prevalence_intervention) | is.na(joined$rr))) {
+    stop("PIF calculation needs complete prevalence_BAU, prevalence_intervention, and rr values.", call. = FALSE)
+  }
+
+  output_cols <- c(
+    "intervention", "age_start", "age_end", "age_label", "sex", "stratum",
+    "disease", "time_step"
+  )
+  risk_factor_cols <- c(output_cols, "risk_factor")
+  risk_factor_key <- do.call(paste, c(joined[risk_factor_cols], sep = "\r"))
+  risk_factor_groups <- split(joined, risk_factor_key)
+
+  risk_factor_pifs <- lapply(risk_factor_groups, function(group) {
+    bau_weighted <- sum(group$prevalence_BAU * group$rr)
+    int_weighted <- sum(group$prevalence_intervention * group$rr)
+    pif <- if (bau_weighted > 0) (bau_weighted - int_weighted) / bau_weighted else 0
+    data.frame(
+      group[1, risk_factor_cols, drop = FALSE],
+      pif = pif,
+      stringsAsFactors = FALSE
+    )
+  })
+  risk_factor_pifs <- do.call(rbind, risk_factor_pifs)
+
+  output_key <- do.call(paste, c(risk_factor_pifs[output_cols], sep = "\r"))
+  groups <- split(risk_factor_pifs, output_key)
+  rows <- lapply(groups, function(group) {
+    combined_pif <- 1 - prod(1 - group$pif)
+    data.frame(
+      group[1, output_cols, drop = FALSE],
+      pif = combined_pif,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out <- out[order(out$intervention, out$disease, out$sex, out$stratum, out$age_start, out$time_step), ]
+  row.names(out) <- NULL
+  out
+}
+
+#' Run PMSLT disease lifetables for one or more intervention arms
+#'
+#' This is the beginner-facing intervention runner. It accepts post-DisMod
+#' disease inputs, optional raw risk-factor prevalence plus relative risks, and
+#' optional direct disease effects. Risk-factor inputs are converted to PIFs
+#' automatically. Direct effects can be used alone or alongside PIFs.
+#'
+#' @param disease_epi Data frame from [read_pmslt_disease_inputs()] or path to
+#'   `pmslt_disease_epi.csv`.
+#' @param risk_prevalence Optional data frame or CSV path for
+#'   `08_risk_factor_prevalence.csv`.
+#' @param relative_risks Optional data frame or CSV path for
+#'   `09_relative_risks.csv`.
+#' @param direct_effects Optional data frame or CSV path for
+#'   `10_direct_intervention_effects.csv`.
+#' @param interventions Optional character vector of intervention arms to run.
+#'   Defaults to every arm found in PIF or direct-effect inputs.
+#' @param cohort_size Radix cohort size for each disease lifetable.
+#'
+#' @return A data frame of disease lifetable outputs with an `intervention`
+#'   column.
+#' @export
+run_pmslt_interventions <- function(disease_epi,
+                                    risk_prevalence = NULL,
+                                    relative_risks = NULL,
+                                    direct_effects = NULL,
+                                    interventions = NULL,
+                                    cohort_size = 1000) {
+  pif_data <- NULL
+  if (!is.null(risk_prevalence) || !is.null(relative_risks)) {
+    if (is.null(risk_prevalence) || is.null(relative_risks)) {
+      stop("Supply both `risk_prevalence` and `relative_risks` to calculate PIFs.", call. = FALSE)
+    }
+    pif_data <- calculate_pif_from_inputs(risk_prevalence, relative_risks)
+  }
+  if (!is.null(direct_effects)) {
+    direct_effects <- read_if_path(direct_effects, "direct_effects")
+  }
+
+  if (is.null(interventions)) {
+    interventions <- unique(c(
+      if (!is.null(pif_data) && "intervention" %in% names(pif_data)) pif_data$intervention else NULL,
+      if (!is.null(direct_effects) && "intervention" %in% names(direct_effects)) direct_effects$intervention else NULL
+    ))
+    interventions <- interventions[!is.na(interventions) & nzchar(interventions)]
+  }
+  if (length(interventions) == 0) {
+    interventions <- "No intervention"
+  }
+
+  rows <- lapply(interventions, function(arm) {
+    out <- run_pmslt_disease_lifetable(
+      disease_epi = disease_epi,
+      pif_data = pif_data,
+      direct_effect_data = direct_effects,
+      intervention = arm,
+      cohort_size = cohort_size
+    )
+    data.frame(intervention = arm, out, stringsAsFactors = FALSE)
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out
+}
+
+add_direct_effect_multipliers <- function(data, direct_effect_data, intervention) {
+  data$incidence_multiplier <- 1
+  data$cfr_multiplier <- 1
+  data$morbidity_multiplier <- 1
+  if (is.null(direct_effect_data)) {
+    return(data)
+  }
+
+  direct_effect_data <- filter_intervention_rows(direct_effect_data, intervention, "direct_effect_data")
+  require_columns(
+    direct_effect_data,
+    c("age_start", "sex", "stratum", "disease", "incidence_rr", "cfr_rr", "morbidity_rr", "coverage"),
+    "direct_effect_data"
+  )
+
+  direct_effect_data$coverage <- ifelse(is.na(as.numeric(direct_effect_data$coverage)), 0, as.numeric(direct_effect_data$coverage))
+  direct_effect_data$incidence_rr <- default_numeric(direct_effect_data$incidence_rr, 1)
+  direct_effect_data$cfr_rr <- default_numeric(direct_effect_data$cfr_rr, 1)
+  direct_effect_data$morbidity_rr <- default_numeric(direct_effect_data$morbidity_rr, 1)
+
+  direct_effect_data$incidence_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$incidence_rr)
+  direct_effect_data$cfr_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$cfr_rr)
+  direct_effect_data$morbidity_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$morbidity_rr)
+
+  keep <- c("age_start", "sex", "stratum", "disease", "incidence_multiplier", "cfr_multiplier", "morbidity_multiplier")
+  data <- merge(
+    data,
+    direct_effect_data[keep],
+    by = c("age_start", "sex", "stratum", "disease"),
+    all.x = TRUE,
+    sort = FALSE,
+    suffixes = c("", "_direct")
+  )
+  for (name in c("incidence_multiplier", "cfr_multiplier", "morbidity_multiplier")) {
+    direct_name <- paste0(name, "_direct")
+    data[[name]] <- ifelse(is.na(data[[direct_name]]), data[[name]], data[[direct_name]])
+    data[[direct_name]] <- NULL
+  }
+  data
+}
+
+filter_intervention_rows <- function(data, intervention, label) {
+  if (!is.null(intervention) && "intervention" %in% names(data)) {
+    data <- data[data$intervention == intervention, , drop = FALSE]
+    if (nrow(data) == 0) {
+      warning("No rows for intervention `", intervention, "` in ", label, ". Assuming no effect.", call. = FALSE)
+    }
+  }
+  data
+}
+
+default_numeric <- function(x, default) {
+  x <- as.numeric(x)
+  ifelse(is.na(x), default, x)
+}
+
+read_if_path <- function(x, label) {
+  if (is.character(x) && length(x) == 1) {
+    if (!file.exists(x)) {
+      stop("Missing ", label, " file: ", x, call. = FALSE)
+    }
+    return(utils::read.csv(x, stringsAsFactors = FALSE, na.strings = c("", "NA")))
+  }
+  x
 }
 
 transition_disease_cycle <- function(susceptible, diseased, dead, incidence, remission, fatality) {

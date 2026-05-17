@@ -31,3 +31,35 @@ test_that("disease lifetable consumes pmslt_disease_epi directly", {
   expect_true(any(abs(intervention$delta_mortality) > 0, na.rm = TRUE))
   expect_true(any(abs(intervention$delta_morbidity) > 0, na.rm = TRUE))
 })
+
+test_that("risk prevalence and relative risks are converted to intervention PIFs", {
+  out <- tempfile("mock_inputs_")
+  generate_mock_pmslt_inputs(output_dir = out)
+
+  pif <- calculate_pif_from_inputs(
+    file.path(out, "08_risk_factor_prevalence.csv"),
+    file.path(out, "09_relative_risks.csv")
+  )
+
+  expect_true(all(c("intervention", "disease", "time_step", "pif") %in% names(pif)))
+  expect_equal(sort(unique(pif$intervention)), c("Tobacco tax", "Tobacco tax plus acute care"))
+  expect_true(any(pif$pif > 0))
+})
+
+test_that("intervention runner supports PIF and direct disease effects", {
+  out <- tempfile("mock_inputs_")
+  generate_mock_pmslt_inputs(output_dir = out)
+  mock_dismod_output(input_dir = out)
+
+  disease_epi <- file.path(out, "mock_dismod_output", "pmslt_disease_epi.csv")
+  results <- run_pmslt_interventions(
+    disease_epi = disease_epi,
+    risk_prevalence = file.path(out, "08_risk_factor_prevalence.csv"),
+    relative_risks = file.path(out, "09_relative_risks.csv"),
+    direct_effects = file.path(out, "10_direct_intervention_effects.csv")
+  )
+
+  expect_equal(sort(unique(results$intervention)), c("Tobacco tax", "Tobacco tax plus acute care"))
+  expect_true(any(results$cfr_multiplier < 1))
+  expect_true(any(abs(results$delta_mortality) > 0, na.rm = TRUE))
+})

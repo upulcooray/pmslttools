@@ -1,14 +1,15 @@
 #' Create a mock PMSLT model specification
 #'
-#' This helper returns a small risk-factor-mediated PMSLT specification for
-#' teaching and package demonstrations.
+#' This helper returns a small PMSLT specification with two intervention arms
+#' for teaching and package demonstrations.
 #'
 #' @return A `pmslt_spec` object.
 #' @export
 mock_pmslt_spec <- function() {
   pmslt_spec(
     intervention = "Illustrative tobacco control intervention",
-    mechanism = "risk_factor",
+    intervention_arms = c("Tobacco tax", "Tobacco tax plus acute care"),
+    mechanism = "both",
     diseases = c("CHD", "Stroke"),
     risk_factors = "Smoking",
     risk_categories = list(Smoking = c("Never", "Current", "Former")),
@@ -81,11 +82,20 @@ generate_mock_pmslt_inputs <- function(output_dir = "mock_inputs_raw",
   trends$notes <- "Annual proportional change"
   write_template_csv(trends, file.path(output_dir, "07_bau_trends.csv"))
 
-  prevalence <- fill_mock_risk_prevalence(templates[["08_risk_factor_prevalence"]])
-  write_template_csv(prevalence, file.path(output_dir, "08_risk_factor_prevalence.csv"))
+  if ("08_risk_factor_prevalence" %in% names(templates)) {
+    prevalence <- fill_mock_risk_prevalence(templates[["08_risk_factor_prevalence"]])
+    write_template_csv(prevalence, file.path(output_dir, "08_risk_factor_prevalence.csv"))
+  }
 
-  rr <- fill_mock_relative_risks(templates[["09_relative_risks"]])
-  write_template_csv(rr, file.path(output_dir, "09_relative_risks.csv"))
+  if ("09_relative_risks" %in% names(templates)) {
+    rr <- fill_mock_relative_risks(templates[["09_relative_risks"]])
+    write_template_csv(rr, file.path(output_dir, "09_relative_risks.csv"))
+  }
+
+  if ("10_direct_intervention_effects" %in% names(templates)) {
+    direct <- fill_mock_direct_effects(templates[["10_direct_intervention_effects"]])
+    write_template_csv(direct, file.path(output_dir, "10_direct_intervention_effects.csv"))
+  }
 
   invisible(list(spec = spec, templates = build_input_templates(spec)))
 }
@@ -603,12 +613,25 @@ fill_mock_risk_prevalence <- function(prevalence) {
     prevalence$risk_category == "Never", 0.52,
     ifelse(prevalence$risk_category == "Current", 0.28, 0.20)
   )
-  prevalence$prevalence_intervention <- ifelse(
+  tobacco_tax <- ifelse(
     prevalence$risk_category == "Never", 0.57,
     ifelse(prevalence$risk_category == "Current", 0.20, 0.23)
   )
+  combined <- ifelse(
+    prevalence$risk_category == "Never", 0.60,
+    ifelse(prevalence$risk_category == "Current", 0.16, 0.24)
+  )
+  prevalence$prevalence_intervention <- ifelse(
+    prevalence$intervention == "Tobacco tax plus acute care",
+    combined,
+    tobacco_tax
+  )
   prevalence$source <- "mock smoking prevalence"
-  prevalence$notes <- "Intervention shifts some current smokers to never/former categories"
+  prevalence$notes <- ifelse(
+    prevalence$intervention == "Tobacco tax plus acute care",
+    "Combined scenario has a larger smoking prevalence shift and direct disease management effects",
+    "Tobacco tax shifts some current smokers to never/former categories"
+  )
   prevalence
 }
 
@@ -623,6 +646,25 @@ fill_mock_relative_risks <- function(rr) {
   rr$source <- "mock relative risks"
   rr$notes <- "Demonstration values only"
   rr
+}
+
+fill_mock_direct_effects <- function(direct) {
+  direct$incidence_rr <- 1
+  direct$cfr_rr <- 1
+  direct$morbidity_rr <- 1
+  direct$coverage <- 1
+
+  acute_care <- direct$intervention == "Tobacco tax plus acute care"
+  direct$cfr_rr[acute_care] <- ifelse(direct$disease[acute_care] == "CHD", 0.85, 0.9)
+  direct$morbidity_rr[acute_care] <- ifelse(direct$disease[acute_care] == "CHD", 0.95, 0.96)
+  direct$coverage[acute_care] <- 0.7
+  direct$source <- "mock direct disease-management effect"
+  direct$notes <- ifelse(
+    acute_care,
+    "Direct disease effect: improved acute care reduces case fatality and morbidity",
+    "No direct disease effect in this intervention arm"
+  )
+  direct
 }
 
 mock_dismod_wide_to_long <- function(wide) {

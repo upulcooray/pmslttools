@@ -49,6 +49,7 @@ input_template_guide_markdown <- function(spec, templates) {
     "## Model Summary",
     "",
     paste0("- Intervention: ", spec$intervention),
+    paste0("- Intervention arms: ", paste(spec$intervention_arms, collapse = ", ")),
     paste0("- Mechanism: ", spec$mechanism),
     paste0("- Diseases: ", paste(spec$diseases, collapse = ", ")),
     paste0("- Risk factors: ", if (length(spec$risk_factors) == 0) "none" else paste(spec$risk_factors, collapse = ", ")),
@@ -322,6 +323,7 @@ template_file_dictionary <- function() {
         sex = id_sex,
         stratum = id_stratum,
         time_step = "Generated simulation cycle, where 0 is the base year. Keep this as an integer annual time step.",
+        intervention = "Generated intervention arm from `pmslt_spec(intervention_arms = ...)`. Fill `prevalence_intervention` for this specific scenario.",
         risk_factor = "Generated risk factor name. For example: Smoking, BMI, sodium intake.",
         risk_category = "Generated exposure category from `pmslt_spec(risk_categories = ...)`. Examples for smoking: Never, Current, Former_1_5_years, Former_5_plus_years. Regenerate the templates if categories are wrong.",
         prevalence_BAU = "Required for each category. Enter the BAU prevalence proportion for this age, sex, stratum, time step, and category.",
@@ -370,6 +372,7 @@ template_file_dictionary <- function() {
         sex = id_sex,
         stratum = id_stratum,
         disease = id_disease,
+        intervention = "Generated intervention arm from `pmslt_spec(intervention_arms = ...)`. Direct disease effects are scenario-specific.",
         incidence_rr = "Enter direct relative risk multiplier for incidence. Use 1 for no effect. Example: 0.9 means a 10 percent incidence reduction.",
         cfr_rr = "Enter direct relative risk multiplier for case fatality. Use 1 for no effect.",
         morbidity_rr = "Enter direct multiplier for disease morbidity or disability weight. Use 1 for no effect.",
@@ -486,8 +489,8 @@ column_requirement <- function(template_name, column) {
 column_requirement_dictionary <- function() {
   common_generated <- c(
     "age_start", "age_end", "age_label", "sex", "stratum", "disease",
-    "time_step", "risk_factor", "risk_category", "parameter", "age",
-    "field", "value"
+    "time_step", "intervention", "risk_factor", "risk_category", "parameter",
+    "age", "field", "value"
   )
 
   list(

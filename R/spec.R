@@ -4,6 +4,8 @@
 #' project-specific data collection templates for a PMSLT simulation.
 #'
 #' @param intervention Short description of the intervention.
+#' @param intervention_arms Character vector of intervention arms. Defaults to
+#'   `intervention`. Use this for multiple intervention scenarios.
 #' @param mechanism One of `"risk_factor"`, `"direct"`, or `"both"`.
 #' @param diseases Character vector of diseases modelled.
 #' @param risk_factors Character vector of risk factors. Required when
@@ -27,6 +29,7 @@ pmslt_spec <- function(intervention,
                        diseases,
                        risk_factors = character(),
                        risk_categories = NULL,
+                       intervention_arms = NULL,
                        ages = age_bands(0, 100, by = 5),
                        sexes = c("male", "female"),
                        strata = "total",
@@ -39,6 +42,7 @@ pmslt_spec <- function(intervention,
   risk_factors <- unique(as.character(risk_factors))
   spec <- list(
     intervention = intervention,
+    intervention_arms = validate_intervention_arms(intervention_arms, intervention),
     mechanism = mechanism,
     diseases = unique_nonempty_character(diseases, "diseases"),
     risk_factors = risk_factors,
@@ -136,6 +140,7 @@ validate_spec <- function(spec) {
 print.pmslt_spec <- function(x, ...) {
   cat("PMSLT model specification\n")
   cat("Intervention: ", x$intervention, "\n", sep = "")
+  cat("Intervention arms: ", paste(x$intervention_arms, collapse = ", "), "\n", sep = "")
   cat("Mechanism: ", x$mechanism, "\n", sep = "")
   cat("Diseases: ", paste(x$diseases, collapse = ", "), "\n", sep = "")
   if (length(x$risk_factors) > 0) {
@@ -242,6 +247,13 @@ validate_risk_categories <- function(risk_categories, risk_factors, mechanism) {
     unique_nonempty_character(risk_categories[[risk_factor]], paste0("risk_categories$", risk_factor))
   }) |>
     stats::setNames(risk_factors)
+}
+
+validate_intervention_arms <- function(intervention_arms, intervention) {
+  if (is.null(intervention_arms)) {
+    intervention_arms <- intervention
+  }
+  unique_nonempty_character(intervention_arms, "intervention_arms")
 }
 
 validate_positive_integer <- function(x, name) {

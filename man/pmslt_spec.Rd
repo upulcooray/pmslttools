@@ -8,6 +8,7 @@ pmslt_spec(
   diseases,
   risk_factors = character(),
   risk_categories = NULL,
+  intervention_arms = NULL,
   ages = age_bands(0, 100, by = 5),
   sexes = c("male", "female"),
   strata = "total",
@@ -19,6 +20,8 @@ pmslt_spec(
 }
 \arguments{
 \item{intervention}{Short description of the intervention.}
+\item{intervention_arms}{Character vector of intervention arms. Defaults to
+\code{intervention}. Use this for multiple intervention scenarios.}
 \item{mechanism}{One of \code{"risk_factor"}, \code{"direct"}, or \code{"both"}.}
 \item{diseases}{Character vector of diseases modelled.}
 \item{risk_factors}{Character vector of risk factors. Required when \code{mechanism} is \code{"risk_factor"} or \code{"both"}.}
