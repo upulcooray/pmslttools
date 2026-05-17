@@ -162,6 +162,11 @@ mock_dismod_output <- function(input_dir = "mock_inputs_raw",
     continuous <- smooth_dismod_age_curve(output_dir, overwrite = overwrite)
     raw_ages <- unique(raw[c("age_start", "age_end", "age_label")])
     pmslt_ages <- predict_dismod_to_age_grid(output_dir, ages = raw_ages, overwrite = overwrite)
+    prepare_pmslt_disease_inputs(
+      input_dir = input_dir,
+      dismod_output_dir = output_dir,
+      overwrite = overwrite
+    )
   }
   message("Mock DisMod outputs written to: ", normalizePath(output_dir))
   invisible(list(
@@ -171,6 +176,101 @@ mock_dismod_output <- function(input_dir = "mock_inputs_raw",
     continuous = continuous,
     pmslt_ages = pmslt_ages
   ))
+}
+
+#' Prepare PMSLT-ready disease epidemiology inputs
+#'
+#' Converts post-DisMod PMSLT age-grid predictions into a wide, time-expanded
+#' disease epidemiology file that can be passed to a PMSLT disease lifetable.
+#'
+#' @param input_dir Raw input directory containing `05_disease_epidemiology_raw.csv`
+#'   and optionally `07_bau_trends.csv` and `08_risk_factor_prevalence.csv`.
+#' @param dismod_output_dir Directory containing `mock_dismod_output_pmslt_ages.csv`.
+#' @param output_file CSV path for PMSLT-ready disease inputs.
+#' @param horizon Optional simulation horizon. If `NULL`, inferred from
+#'   `08_risk_factor_prevalence.csv` when available; otherwise 0.
+#' @param overwrite Logical. Should an existing output file be overwritten?
+#'
+#' @return Invisibly returns the PMSLT-ready disease input data frame.
+#' @export
+prepare_pmslt_disease_inputs <- function(input_dir = "mock_inputs_raw",
+                                         dismod_output_dir = file.path(input_dir, "mock_dismod_output"),
+                                         output_file = file.path(dismod_output_dir, "pmslt_disease_epi.csv"),
+                                         horizon = NULL,
+                                         overwrite = TRUE) {
+  pmslt_age_path <- file.path(dismod_output_dir, "mock_dismod_output_pmslt_ages.csv")
+  if (!file.exists(pmslt_age_path)) {
+    predict_dismod_to_age_grid(dismod_output_dir = dismod_output_dir, overwrite = overwrite)
+  }
+  if (file.exists(output_file) && !isTRUE(overwrite)) {
+    stop("File already exists: ", output_file, ". Use `overwrite = TRUE` to replace it.", call. = FALSE)
+  }
+
+  pmslt_long <- utils::read.csv(pmslt_age_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  require_columns(
+    pmslt_long,
+    c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "parameter", "dismod_age_grid_mean"),
+    "mock_dismod_output_pmslt_ages.csv"
+  )
+  base <- stats::reshape(
+    pmslt_long[c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "parameter", "dismod_age_grid_mean")],
+    idvar = c("age_start", "age_end", "age_label", "sex", "stratum", "disease"),
+    timevar = "parameter",
+    direction = "wide"
+  )
+  names(base) <- sub("dismod_age_grid_mean[.]", "", names(base))
+  row.names(base) <- NULL
+
+  raw_path <- file.path(input_dir, "05_disease_epidemiology_raw.csv")
+  if (file.exists(raw_path)) {
+    raw <- utils::read.csv(raw_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+    if ("disability_weight" %in% names(raw)) {
+      raw_dw <- unique(raw[c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "disability_weight")])
+      base <- merge(base, raw_dw, by = c("age_start", "age_end", "age_label", "sex", "stratum", "disease"), all.x = TRUE, sort = FALSE)
+    }
+  }
+  if (!"disability_weight" %in% names(base)) {
+    base$disability_weight <- NA_real_
+  }
+
+  trend_path <- file.path(input_dir, "07_bau_trends.csv")
+  if (file.exists(trend_path)) {
+    trends <- utils::read.csv(trend_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+    keep <- intersect(c("disease", "incidence_apc", "cfr_apc", "prevalence_apc"), names(trends))
+    base <- merge(base, unique(trends[keep]), by = "disease", all.x = TRUE, sort = FALSE)
+  }
+  for (col in c("incidence_apc", "cfr_apc", "prevalence_apc")) {
+    if (!col %in% names(base)) {
+      base[[col]] <- 0
+    }
+    base[[col]][is.na(base[[col]])] <- 0
+  }
+
+  if (is.null(horizon)) {
+    horizon <- infer_mock_horizon(input_dir)
+  }
+  time_grid <- data.frame(time_step = seq.int(0, horizon), stringsAsFactors = FALSE)
+  out <- merge(base, time_grid, all = TRUE)
+  out$incidence_BAU <- out$incidence_rate * exp(out$incidence_apc * out$time_step)
+  out$prevalence_initial <- ifelse(out$time_step == 0, out$prevalence, NA_real_)
+  out$case_fatality_BAU <- out$case_fatality_rate * exp(out$cfr_apc * out$time_step)
+  out$excess_mortality_BAU <- out$excess_mortality_rate * exp(out$cfr_apc * out$time_step)
+  out$prevalence_BAU_reference <- out$prevalence * exp(out$prevalence_apc * out$time_step)
+  out$input_source <- "post-DisMod PMSLT age-grid prediction"
+
+  ordered_cols <- c(
+    "age_start", "age_end", "age_label", "sex", "stratum", "disease", "time_step",
+    "incidence_BAU", "prevalence_initial", "remission_rate",
+    "excess_mortality_BAU", "case_fatality_BAU", "disability_weight",
+    "prevalence_BAU_reference", "incidence_apc", "cfr_apc", "prevalence_apc",
+    "input_source"
+  )
+  out <- out[ordered_cols]
+  out <- out[order(out$disease, out$sex, out$stratum, out$age_start, out$time_step), ]
+  row.names(out) <- NULL
+
+  utils::write.csv(out, output_file, row.names = FALSE, na = "")
+  invisible(out)
 }
 
 #' Smooth mock DisMod outputs over continuous age
@@ -767,6 +867,18 @@ mock_upper <- function(parameter, value) {
     out <- pmin(1, out)
   }
   round(out, 6)
+}
+
+infer_mock_horizon <- function(input_dir) {
+  prevalence_path <- file.path(input_dir, "08_risk_factor_prevalence.csv")
+  if (!file.exists(prevalence_path)) {
+    return(0L)
+  }
+  prevalence <- utils::read.csv(prevalence_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  if (!"time_step" %in% names(prevalence)) {
+    return(0L)
+  }
+  max(as.integer(prevalence$time_step), na.rm = TRUE)
 }
 
 write_template_csv <- function(data, path) {

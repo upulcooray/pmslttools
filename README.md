@@ -68,6 +68,7 @@ single-year continuous-age predictions and PMSLT age-grid predictions:
 
 - `mock_dismod_output_continuous.csv`
 - `mock_dismod_output_pmslt_ages.csv`
+- `pmslt_disease_epi.csv`
 - `dismod_continuous_age_curve.png`
 
 It is for learning the workflow shape only, not a substitute for real DisMod-MR.
