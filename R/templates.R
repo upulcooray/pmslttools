@@ -81,7 +81,10 @@ build_input_templates <- function(spec) {
     templates[["12_costs"]] <- cost_template(disease_grid)
   }
 
-  templates
+  c(
+    list("00_column_dictionary" = column_dictionary_template(templates)),
+    templates
+  )
 }
 
 expand_base_grid <- function(spec) {

@@ -15,7 +15,15 @@ test_that("template builder includes risk factor files", {
 
   expect_true("08_risk_factor_prevalence" %in% names(templates))
   expect_true("09_relative_risks" %in% names(templates))
+  expect_true("00_column_dictionary" %in% names(templates))
   expect_true(all(c("acmr_BAU", "source", "notes") %in% names(templates[["02_all_cause_mortality"]])))
+  expect_equal(
+    templates[["00_column_dictionary"]]$requirement[
+      templates[["00_column_dictionary"]]$file == "08_risk_factor_prevalence.csv" &
+        templates[["00_column_dictionary"]]$column == "prevalence_intervention"
+    ],
+    "required"
+  )
   expect_equal(
     sort(unique(templates[["08_risk_factor_prevalence"]]$risk_category)),
     c("Current", "Former", "Never")
@@ -46,7 +54,7 @@ test_that("draft_input_templates writes a beginner guide", {
 
   expect_true(file.exists(guide_path))
   expect_true(any(grepl("05_disease_epidemiology_raw.csv", guide, fixed = TRUE)))
-  expect_true(any(grepl("incidence_rate", guide, fixed = TRUE)))
+  expect_true(any(grepl("`prevalence_intervention` *", guide, fixed = TRUE)))
   expect_true(any(grepl("per person-year", guide, fixed = TRUE)))
 })
 

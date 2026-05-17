@@ -105,7 +105,16 @@ file_section <- function(template_name, template) {
     if (is.null(explanation)) {
       explanation <- "Generated package column. Keep unchanged unless you know this field is wrong."
     }
-    c(paste0("### `", column, "`"), "", explanation, "")
+    requirement <- column_requirement(template_name, column)
+    marker <- if (requirement %in% c("required", "conditional")) " *" else ""
+    c(
+      paste0("### `", column, "`", marker),
+      "",
+      paste0("Requirement: ", requirement, "."),
+      "",
+      explanation,
+      ""
+    )
   }))
 
   c(
@@ -137,6 +146,20 @@ template_file_dictionary <- function() {
   id_notes <- "Optional free-text notes. Use this for assumptions, conversions, caveats, or reasons a value is blank."
 
   list(
+    "00_column_dictionary" = list(
+      purpose = "Lists every generated template column and whether the user must fill it.",
+      rows = "One row per file and column.",
+      columns = list(
+        file = "Generated template filename.",
+        column = "Column name in that template.",
+        requirement = "Whether the column is generated, required, conditional, or optional.",
+        description = "Plain-language guidance on how to fill or interpret the column."
+      ),
+      checks = c(
+        "Use this file as the quick reference for which fields must be filled.",
+        "Required and conditional fields are also marked with `*` in `README_inputs_raw.md`."
+      )
+    ),
     "00_model_specification" = list(
       purpose = "Records the model design used to generate the templates. This is mainly for checking and documentation.",
       rows = "One row per model specification field.",
@@ -302,7 +325,7 @@ template_file_dictionary <- function() {
         risk_factor = "Generated risk factor name. For example: Smoking, BMI, sodium intake.",
         risk_category = "Generated exposure category from `pmslt_spec(risk_categories = ...)`. Examples for smoking: Never, Current, Former_1_5_years, Former_5_plus_years. Regenerate the templates if categories are wrong.",
         prevalence_BAU = "Required for each category. Enter the BAU prevalence proportion for this age, sex, stratum, time step, and category.",
-        prevalence_intervention = "Required for intervention modelling. Enter the intervention prevalence proportion for the same category. If the intervention has no effect in a row, this can equal `prevalence_BAU`.",
+        prevalence_intervention = "Required for PIF-based intervention modelling. Enter the counterfactual intervention prevalence proportion for the same category. If the intervention has no effect in a row, copy `prevalence_BAU`. The PIF cannot be calculated without this intervention distribution.",
         source = id_source,
         notes = "Record intervention assumptions, time-lag assumptions, or how prevalence was projected over time."
       ),
@@ -413,5 +436,133 @@ use_after_completion_section <- function() {
     "3. Convert or copy disease rows into the DisMod workflow using `06_dismod_input_skeleton.csv`.",
     "4. After DisMod returns coherent estimates, use the DisMod outputs rather than the raw disease epidemiology file for PMSLT simulation inputs.",
     "5. Keep these raw files unchanged as an audit trail. If assumptions change, create a new input folder rather than overwriting the original evidence collection."
+  )
+}
+
+column_dictionary_template <- function(templates) {
+  rows <- lapply(names(templates), function(template_name) {
+    info <- template_file_dictionary()[[template_name]]
+    data.frame(
+      file = paste0(template_name, ".csv"),
+      column = names(templates[[template_name]]),
+      requirement = vapply(
+        names(templates[[template_name]]),
+        function(column) column_requirement(template_name, column),
+        character(1)
+      ),
+      description = vapply(
+        names(templates[[template_name]]),
+        function(column) {
+          if (!is.null(info$columns[[column]])) {
+            info$columns[[column]]
+          } else {
+            "Generated package column. Keep unchanged unless you know this field is wrong."
+          }
+        },
+        character(1)
+      ),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  do.call(rbind, rows)
+}
+
+column_requirement <- function(template_name, column) {
+  req <- column_requirement_dictionary()[[template_name]]
+  if (is.null(req)) {
+    return("generated")
+  }
+
+  for (requirement in names(req)) {
+    if (column %in% req[[requirement]]) {
+      return(requirement)
+    }
+  }
+
+  "generated"
+}
+
+column_requirement_dictionary <- function() {
+  common_generated <- c(
+    "age_start", "age_end", "age_label", "sex", "stratum", "disease",
+    "time_step", "risk_factor", "risk_category", "parameter", "age",
+    "field", "value"
+  )
+
+  list(
+    "00_column_dictionary" = list(
+      generated = c("file", "column", "requirement", "description")
+    ),
+    "00_model_specification" = list(
+      generated = c("field", "value", "notes")
+    ),
+    "01_population" = list(
+      generated = common_generated,
+      required = c("initial_population", "source"),
+      optional = "notes"
+    ),
+    "02_all_cause_mortality" = list(
+      generated = common_generated,
+      required = c("acmr_BAU", "source"),
+      optional = "notes"
+    ),
+    "03_all_cause_morbidity" = list(
+      generated = common_generated,
+      required = c("pYLD_BAU", "source"),
+      optional = "notes"
+    ),
+    "04_life_expectancy" = list(
+      generated = common_generated,
+      required = c("expected_years_remaining", "source"),
+      optional = "notes"
+    ),
+    "05_disease_epidemiology_raw" = list(
+      generated = common_generated,
+      conditional = c(
+        "incidence_rate", "prevalence", "remission_rate",
+        "excess_mortality_rate", "case_fatality_rate"
+      ),
+      required = c("disability_weight", "source"),
+      optional = "notes"
+    ),
+    "06_dismod_input_skeleton" = list(
+      generated = common_generated,
+      conditional = c(
+        "mean_value", "lower_95", "upper_95", "sample_size",
+        "data_source", "quality_flag"
+      ),
+      optional = "notes"
+    ),
+    "07_bau_trends" = list(
+      generated = common_generated,
+      required = c("incidence_apc", "cfr_apc", "source"),
+      optional = c("prevalence_apc", "notes")
+    ),
+    "08_risk_factor_prevalence" = list(
+      generated = common_generated,
+      required = c("prevalence_BAU", "prevalence_intervention", "source"),
+      optional = "notes"
+    ),
+    "09_relative_risks" = list(
+      generated = common_generated,
+      required = c("rr", "reference_category", "source"),
+      optional = c("rr_lower", "rr_upper", "notes")
+    ),
+    "10_direct_intervention_effects" = list(
+      generated = common_generated,
+      required = c("incidence_rr", "cfr_rr", "morbidity_rr", "coverage", "source"),
+      optional = "notes"
+    ),
+    "11_stratum_rate_ratios" = list(
+      generated = common_generated,
+      required = c("acmr_rate_ratio", "morbidity_rate_ratio", "reference_stratum", "source"),
+      optional = "notes"
+    ),
+    "12_costs" = list(
+      generated = common_generated,
+      required = c("disease_cost", "currency", "price_year", "source"),
+      optional = c("background_cost", "notes")
+    )
   )
 }
