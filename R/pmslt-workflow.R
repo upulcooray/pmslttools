@@ -136,7 +136,7 @@ run_pmslt_disease_lifetable <- function(disease_epi,
     data$pif[is.na(data$pif)] <- 0
   }
   data$pif <- pmax(-Inf, pmin(1, as.numeric(data$pif)))
-  data <- add_direct_effect_multipliers(data, direct_effect_data, intervention)
+  data <- apply_direct_disease_effects(data, direct_effect_data, intervention)
   data$incidence_Int <- data$incidence_BAU * (1 - data$pif) * data$incidence_multiplier
   data$case_fatality_Int <- data$case_fatality_BAU * data$cfr_multiplier
   data$disability_weight_Int <- data$disability_weight * data$morbidity_multiplier
@@ -232,7 +232,9 @@ run_one_disease_group <- function(group, cohort_size) {
 #'
 #' This converts `08_risk_factor_prevalence.csv` and `09_relative_risks.csv`
 #' into the compact PIF table used by the disease lifetable. It supports
-#' multiple intervention arms in the same prevalence file.
+#' multiple intervention arms in the same prevalence file. When there is more
+#' than one risk factor, PIFs are calculated separately by risk factor and then
+#' combined as `1 - prod(1 - pif)`, an independence-style approximation.
 #'
 #' @param risk_prevalence Data frame or CSV path for
 #'   `08_risk_factor_prevalence.csv`.
@@ -245,6 +247,7 @@ calculate_pif_from_inputs <- function(risk_prevalence, relative_risks) {
   risk_prevalence <- read_if_path(risk_prevalence, "risk_prevalence")
   relative_risks <- read_if_path(relative_risks, "relative_risks")
 
+  validate_risk_prevalence_inputs(risk_prevalence)
   require_columns(
     risk_prevalence,
     c(
@@ -324,6 +327,79 @@ calculate_pif_from_inputs <- function(risk_prevalence, relative_risks) {
   out
 }
 
+#' Validate risk-factor prevalence distributions
+#'
+#' Checks that every risk-factor category distribution in
+#' `08_risk_factor_prevalence.csv` sums to 1. This is a focused validation used
+#' before PIF calculation.
+#'
+#' @param risk_prevalence Data frame or CSV path for
+#'   `08_risk_factor_prevalence.csv`.
+#' @param tolerance Maximum allowed absolute difference from 1.
+#' @param stop_on_error Logical. If `TRUE`, stop when invalid sums are found.
+#'   If `FALSE`, return an issue table.
+#'
+#' @return Invisibly returns an issue table when `stop_on_error = TRUE`; returns
+#'   the issue table directly when `stop_on_error = FALSE`.
+#' @export
+validate_risk_prevalence_inputs <- function(risk_prevalence,
+                                            tolerance = 0.001,
+                                            stop_on_error = TRUE) {
+  risk_prevalence <- read_if_path(risk_prevalence, "risk_prevalence")
+  tolerance <- validate_nonnegative_number(tolerance, "tolerance")
+  require_columns(
+    risk_prevalence,
+    c(
+      "age_start", "sex", "stratum", "time_step", "intervention",
+      "risk_factor", "risk_category", "prevalence_BAU",
+      "prevalence_intervention"
+    ),
+    "08_risk_factor_prevalence.csv"
+  )
+
+  risk_prevalence$prevalence_BAU <- as.numeric(risk_prevalence$prevalence_BAU)
+  risk_prevalence$prevalence_intervention <- as.numeric(risk_prevalence$prevalence_intervention)
+  if (any(is.na(risk_prevalence$prevalence_BAU) | is.na(risk_prevalence$prevalence_intervention))) {
+    stop("Risk prevalence validation needs complete prevalence_BAU and prevalence_intervention values.", call. = FALSE)
+  }
+
+  group_cols <- c("intervention", "age_start", "sex", "stratum", "time_step", "risk_factor")
+  bau <- prevalence_sum_issues(
+    risk_prevalence,
+    value_col = "prevalence_BAU",
+    prevalence_type = "BAU",
+    group_cols = group_cols,
+    tolerance = tolerance
+  )
+  intervention <- prevalence_sum_issues(
+    risk_prevalence,
+    value_col = "prevalence_intervention",
+    prevalence_type = "intervention",
+    group_cols = group_cols,
+    tolerance = tolerance
+  )
+  issues <- rbind(bau, intervention)
+  row.names(issues) <- NULL
+
+  if (nrow(issues) > 0 && isTRUE(stop_on_error)) {
+    first <- issues[1, , drop = FALSE]
+    stop(
+      "Risk-factor prevalence categories must sum to 1 within each intervention, age, sex, stratum, time_step, and risk_factor. ",
+      "First problem: ", first$prevalence_type, " prevalence for intervention `", first$intervention,
+      "`, risk factor `", first$risk_factor, "`, age_start ", first$age_start,
+      ", sex `", first$sex, "`, stratum `", first$stratum, "`, time_step ",
+      first$time_step, " sums to ", round(first$prevalence_sum, 6), ".",
+      call. = FALSE
+    )
+  }
+
+  if (isTRUE(stop_on_error)) {
+    invisible(issues)
+  } else {
+    issues
+  }
+}
+
 #' Run PMSLT disease lifetables for one or more intervention arms
 #'
 #' This is the beginner-facing intervention runner. It accepts post-DisMod
@@ -389,7 +465,7 @@ run_pmslt_interventions <- function(disease_epi,
   out
 }
 
-add_direct_effect_multipliers <- function(data, direct_effect_data, intervention) {
+apply_direct_disease_effects <- function(data, direct_effect_data, intervention) {
   data$incidence_multiplier <- 1
   data$cfr_multiplier <- 1
   data$morbidity_multiplier <- 1
@@ -409,6 +485,8 @@ add_direct_effect_multipliers <- function(data, direct_effect_data, intervention
   direct_effect_data$cfr_rr <- default_numeric(direct_effect_data$cfr_rr, 1)
   direct_effect_data$morbidity_rr <- default_numeric(direct_effect_data$morbidity_rr, 1)
 
+  # Coverage scales the direct effect from the treated group to the whole
+  # modelled population. Example: RR 0.80 at 50% coverage becomes 0.90 overall.
   direct_effect_data$incidence_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$incidence_rr)
   direct_effect_data$cfr_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$cfr_rr)
   direct_effect_data$morbidity_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$morbidity_rr)
@@ -443,6 +521,32 @@ filter_intervention_rows <- function(data, intervention, label) {
 default_numeric <- function(x, default) {
   x <- as.numeric(x)
   ifelse(is.na(x), default, x)
+}
+
+prevalence_sum_issues <- function(data, value_col, prevalence_type, group_cols, tolerance) {
+  sums <- stats::aggregate(
+    data[[value_col]],
+    data[group_cols],
+    sum
+  )
+  names(sums)[names(sums) == "x"] <- "prevalence_sum"
+  sums$difference <- sums$prevalence_sum - 1
+  bad <- abs(sums$difference) > tolerance
+  if (!any(bad)) {
+    return(data.frame(
+      prevalence_type = character(),
+      sums[FALSE, , drop = FALSE],
+      message = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  issues <- sums[bad, , drop = FALSE]
+  data.frame(
+    prevalence_type = prevalence_type,
+    issues,
+    message = paste0(prevalence_type, " prevalence sums to ", round(issues$prevalence_sum, 6), ", not 1."),
+    stringsAsFactors = FALSE
+  )
 }
 
 read_if_path <- function(x, label) {

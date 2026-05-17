@@ -36,14 +36,33 @@ test_that("risk prevalence and relative risks are converted to intervention PIFs
   out <- tempfile("mock_inputs_")
   generate_mock_pmslt_inputs(output_dir = out)
 
+  prevalence_path <- file.path(out, "08_risk_factor_prevalence.csv")
+  expect_equal(nrow(validate_risk_prevalence_inputs(prevalence_path, stop_on_error = FALSE)), 0)
+
   pif <- calculate_pif_from_inputs(
-    file.path(out, "08_risk_factor_prevalence.csv"),
+    prevalence_path,
     file.path(out, "09_relative_risks.csv")
   )
 
   expect_true(all(c("intervention", "disease", "time_step", "pif") %in% names(pif)))
   expect_equal(sort(unique(pif$intervention)), c("Tobacco tax", "Tobacco tax plus acute care"))
   expect_true(any(pif$pif > 0))
+})
+
+test_that("risk prevalence validation catches category sums that are not 1", {
+  out <- tempfile("mock_inputs_")
+  generate_mock_pmslt_inputs(output_dir = out)
+  prevalence <- utils::read.csv(file.path(out, "08_risk_factor_prevalence.csv"))
+  prevalence$prevalence_intervention[[1]] <- prevalence$prevalence_intervention[[1]] + 0.2
+
+  issues <- validate_risk_prevalence_inputs(prevalence, stop_on_error = FALSE)
+
+  expect_gt(nrow(issues), 0)
+  expect_true("prevalence_sum" %in% names(issues))
+  expect_error(
+    calculate_pif_from_inputs(prevalence, file.path(out, "09_relative_risks.csv")),
+    "must sum to 1"
+  )
 })
 
 test_that("intervention runner supports PIF and direct disease effects", {

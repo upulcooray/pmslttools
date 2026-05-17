@@ -26,7 +26,7 @@ The package should guide users through:
 
 ## Current Package State
 
-- Version: `0.0.0.9008`
+- Version: `0.0.0.9009`
 - Current architecture docs:
   - `inst/artifacts/package_architecture.md`
   - `inst/artifacts/package_audit_2026-05-17.md`
@@ -66,6 +66,7 @@ The package should guide users through:
 - `prepare_pmslt_disease_inputs()`
 - `read_pmslt_disease_inputs()`
 - `validate_pmslt_disease_inputs()`
+- `validate_risk_prevalence_inputs()`
 - `calculate_pif_from_inputs()`
 - `run_pmslt_disease_lifetable()`
 - `run_pmslt_interventions()`
@@ -117,24 +118,17 @@ results <- run_pmslt_interventions(
 2. Real DisMod-MR integration does not exist yet.
 3. CSV schemas are spread across template generation, input guide, validators,
    and downstream functions.
-4. Direct-effect helper naming is not beginner-friendly:
-   `add_direct_effect_multipliers()` should likely become
-   `apply_direct_disease_effects()`.
-5. PIF calculation should validate category prevalence sums.
-6. Multi-risk-factor PIF combination needs stronger documentation.
-7. `demo_mock_inputs_raw/` may need regeneration after the latest multi-arm
+4. `demo_mock_inputs_raw/` may need regeneration after the latest multi-arm
    direct-effect changes.
 
 ## Next Best Tasks
 
-1. Rename and comment the direct-effect helper.
-2. Add prevalence sum validation for PIF inputs.
-3. Create central schema definitions in `R/schema.R`.
-4. Add `validate_raw_inputs()`.
-5. Formalise the `pmslt_disease_epi.csv` schema.
-6. Regenerate `demo_mock_inputs_raw/`.
-7. Add a full beginner vignette.
-8. Start main all-cause lifetable module after schemas stabilise.
+1. Create central schema definitions in `R/schema.R`.
+2. Add `validate_raw_inputs()`.
+3. Formalise the `pmslt_disease_epi.csv` schema.
+4. Regenerate `demo_mock_inputs_raw/`.
+5. Add a full beginner vignette.
+6. Start main all-cause lifetable module after schemas stabilise.
 
 ## Validation Commands
 

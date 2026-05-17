@@ -94,9 +94,11 @@ as the direct model input.
 
 For risk-factor interventions, `calculate_pif_from_inputs()` converts
 `08_risk_factor_prevalence.csv` and `09_relative_risks.csv` into the PIF table
-used by the disease lifetable. For interventions that directly change disease
-incidence, case fatality, or morbidity, fill `10_direct_intervention_effects.csv`.
-Multiple intervention arms can live in the same template folder:
+used by the disease lifetable. It first checks that risk-category prevalences
+sum to 1 within each age, sex, stratum, time step, risk factor, and intervention
+arm. For interventions that directly change disease incidence, case fatality, or
+morbidity, fill `10_direct_intervention_effects.csv`. Multiple intervention
+arms can live in the same template folder:
 
 ```r
 results <- run_pmslt_interventions(

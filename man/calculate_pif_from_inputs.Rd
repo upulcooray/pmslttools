@@ -17,5 +17,7 @@ disease, and time step.
 \description{
 This converts \code{08_risk_factor_prevalence.csv} and \code{09_relative_risks.csv}
 into the compact PIF table used by the disease lifetable. It supports
-multiple intervention arms in the same prevalence file.
+multiple intervention arms in the same prevalence file. When there is more
+than one risk factor, PIFs are calculated separately by risk factor and then
+combined as \code{1 - prod(1 - pif)}, an independence-style approximation.
 }

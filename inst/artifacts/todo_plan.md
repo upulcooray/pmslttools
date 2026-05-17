@@ -10,11 +10,39 @@ Last updated: 2026-05-17
 4. Make intervention handling intuitive at template stage and model stage.
 5. Add full PMSLT components only after disease input contracts are clear.
 
+## Source Template Migration Map
+
+This package is being built from the modelling ideas in
+`../PMSLT_Template_v1.R`, but the script should not be copied directly. The
+package has clearer CSV schemas, post-DisMod disease inputs, and multi-arm
+intervention handling. The source template should be mined module by module.
+
+Migration status:
+
+- Pre-simulation coherence check: partly superseded by `diagnose_missing_parameters()`
+  and `solve_dismod_lite()`. Still useful for future raw validation messages.
+- Module I main lifetable initialisation: not yet migrated. Needed for full
+  population PMSLT.
+- Module II PIF calculation: migrated and improved as `calculate_pif_from_inputs()`.
+- Module III disease lifetable: partly migrated as `run_pmslt_disease_lifetable()`;
+  disease costs and YLD outputs still need migration.
+- Module IV main lifetable integration: not yet migrated. This is the most
+  important next engine layer after intervention validation.
+- Module V aggregation and ICERs: not yet migrated. Needed after main lifetable.
+- Equity mortality disaggregation: not yet migrated. Should be connected to
+  `11_stratum_rate_ratios.csv`.
+- Master execution pipeline: should be rebuilt later as `run_pmslt()`, not
+  copied directly.
+- PSA sampler and probabilistic wrapper: useful design, but should be rebuilt
+  after deterministic schemas and engine outputs stabilise.
+
 ## Phase 1: Clarify Current Intervention Layer
 
-Status: next
+Status: in progress
 
 ### 1.1 Rename direct-effect helper
+
+Status: completed 2026-05-17.
 
 Problem:
 
@@ -36,7 +64,15 @@ Acceptance criteria:
 - `run_pmslt_interventions()` output unchanged.
 - Source code is clearer to a beginner reading it.
 
+Implementation note:
+
+- Renamed the helper to `apply_direct_disease_effects()`.
+- Added an explanatory code comment about converting treatment-group RR and
+  coverage into a population-level multiplier.
+
 ### 1.2 Validate prevalence distributions
+
+Status: completed 2026-05-17.
 
 Problem:
 
@@ -57,7 +93,15 @@ Acceptance criteria:
 - Bad category sums are detected.
 - Error messages identify the affected risk factor and intervention arm.
 
+Implementation note:
+
+- Added exported `validate_risk_prevalence_inputs()`.
+- `calculate_pif_from_inputs()` now calls this validation before joining RRs.
+- Added tests for valid mock prevalence inputs and invalid category sums.
+
 ### 1.3 Document multi-risk-factor PIF assumptions
+
+Status: completed 2026-05-17.
 
 Problem:
 
@@ -75,6 +119,11 @@ pif_combination = c("independent", "additive")
 Acceptance criteria:
 
 - Users understand the independence-style assumption.
+
+Implementation note:
+
+- Documented the `1 - prod(1 - pif)` independence-style approximation in
+  `calculate_pif_from_inputs()` documentation.
 
 ## Phase 2: Stabilise Schemas
 
@@ -207,6 +256,10 @@ Status: medium priority, after schemas
 
 ### 4.1 Main all-cause lifetable
 
+Source template reference:
+
+- `PMSLT_Template_v1.R::initialize_main_lifetable()`
+
 Todo:
 
 - Add `initialize_lifetable()`.
@@ -223,6 +276,10 @@ Acceptance criteria:
 - BAU lifetable runs without disease interventions.
 
 ### 4.2 Disease delta integration
+
+Source template reference:
+
+- `PMSLT_Template_v1.R::run_main_lifetable()`
 
 Todo:
 
@@ -250,6 +307,10 @@ Acceptance criteria:
 
 ### 4.4 Outcome summaries
 
+Source template reference:
+
+- `PMSLT_Template_v1.R::aggregate_population_results()`
+
 Todo:
 
 - Add:
@@ -269,6 +330,11 @@ Status: later
 
 ### 5.1 Cost module
 
+Source template reference:
+
+- `PMSLT_Template_v1.R::run_disease_lifetable()`
+- `PMSLT_Template_v1.R::run_main_lifetable()`
+
 Todo:
 
 - Consume `12_costs.csv`.
@@ -276,6 +342,11 @@ Todo:
 - Add discounting.
 
 ### 5.2 Probabilistic sensitivity analysis
+
+Source template reference:
+
+- `PMSLT_Template_v1.R::draw_psa_parameters()`
+- `PMSLT_Template_v1.R::run_probabilistic_pmslt()`
 
 Todo:
 
@@ -291,6 +362,23 @@ Todo:
 - Store assumptions per intervention arm.
 - Allow scenario labels and scenario metadata.
 - Support comparing multiple interventions and combined intervention packages.
+
+### 5.4 Equity disaggregation
+
+Source template reference:
+
+- `PMSLT_Template_v1.R::disaggregate_mortality()`
+
+Todo:
+
+- Add a tested base-R helper for converting aggregate rates to stratum-specific
+  rates using supplied rate ratios.
+- Connect it to `11_stratum_rate_ratios.csv`.
+- Preserve the aggregate total while applying stratum rate ratios.
+
+Acceptance criteria:
+
+- Weighted stratum-specific survival reproduces aggregate survival.
 
 ## Phase 6: Teaching Materials
 

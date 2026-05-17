@@ -46,6 +46,35 @@ results <- run_pmslt_interventions(
 )
 ```
 
+## Relationship To `PMSLT_Template_v1.R`
+
+The original script at `../PMSLT_Template_v1.R` is treated as a prototype, not
+as package-ready source. Its conceptual modules map to the package as follows:
+
+- Pre-simulation epidemiological coherence checks inform diagnostics and raw
+  validators.
+- Module I main lifetable initialisation should become a package-level
+  all-cause lifetable module.
+- Module II PIF calculation has been superseded by
+  `calculate_pif_from_inputs()`, which uses package CSV schemas and supports
+  multiple intervention arms.
+- Module III disease lifetable has been partly superseded by
+  `run_pmslt_disease_lifetable()`, which consumes post-DisMod
+  `pmslt_disease_epi.csv`; disease costs and YLD outputs still need migration.
+- Module IV main lifetable integration remains to be rebuilt using package
+  naming and schemas.
+- Module V aggregation and ICER summaries remain to be rebuilt after the main
+  lifetable is implemented.
+- The equity mortality disaggregation helper should be migrated and connected
+  to `11_stratum_rate_ratios.csv`.
+- The PSA functions should be rebuilt after deterministic schemas and outputs
+  stabilise.
+
+Migration rule:
+
+- Port modelling ideas from the original script into schema-driven package
+  modules. Do not copy the old tidyverse-dependent implementation directly.
+
 ## Layer 1: Model Specification
 
 Files:
@@ -226,6 +255,7 @@ Public functions:
 
 - `read_pmslt_disease_inputs()`
 - `validate_pmslt_disease_inputs()`
+- `validate_risk_prevalence_inputs()`
 - `calculate_pif_from_inputs()`
 - `run_pmslt_disease_lifetable()`
 - `run_pmslt_interventions()`
@@ -233,6 +263,8 @@ Public functions:
 Responsibilities:
 
 - Read and validate the canonical post-DisMod disease input.
+- Validate that risk-category prevalence distributions sum to 1 before PIF
+  calculation.
 - Convert risk-factor prevalence plus relative-risk inputs into PIFs.
 - Run a narrow disease lifetable module using incidence, prevalence, remission,
   case fatality, and disability weight.
@@ -267,6 +299,61 @@ Design rule:
 - `run_pmslt_interventions()` should be the beginner-facing entry point for
   intervention scenarios. Internal helper names may be more technical, but the
   user-facing function should remain clear.
+
+Internal direct-effect helper:
+
+- `apply_direct_disease_effects()` attaches population-level intervention
+  multipliers to the disease input.
+- Formula: `effective_multiplier <- 1 - coverage * (1 - rr)`.
+- Example: `rr = 0.80` at `coverage = 0.50` becomes an overall multiplier of
+  `0.90`.
+
+## Layer 6: Planned Main PMSLT Lifetable
+
+Files:
+
+- Planned: `R/main-lifetable.R`
+
+Planned public functions:
+
+- `initialize_pmslt_lifetable()`
+- `integrate_disease_deltas()`
+- `summarise_pmslt_results()`
+
+Source template concepts:
+
+- `initialize_main_lifetable()`
+- `run_main_lifetable()`
+- `aggregate_population_results()`
+
+Responsibilities:
+
+- Read population, all-cause mortality, all-cause morbidity, and life
+  expectancy inputs.
+- Run BAU and intervention population lifetables.
+- Integrate disease-specific mortality and morbidity deltas from the disease
+  module.
+- Calculate person-years, deaths, HALYs, DALYs, costs, and stratified
+  summaries.
+
+Boundary:
+
+- This layer should be added only after raw schemas and post-DisMod disease
+  inputs remain stable.
+
+## Layer 7: Planned Uncertainty, Costs, and Equity Extensions
+
+Planned modules:
+
+- Cost module consuming `12_costs.csv`.
+- PSA module inspired by the old `draw_psa_parameters()` and
+  `run_probabilistic_pmslt()`.
+- Equity disaggregation module inspired by `disaggregate_mortality()`.
+
+Design rule:
+
+- Deterministic model contracts come first. PSA should sample from stable
+  schemas rather than ad hoc generated data frames.
 
 ## Tests
 
@@ -307,6 +394,7 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 
 - `age_bands()`
 - `calculate_pif_from_inputs()`
+- `validate_risk_prevalence_inputs()`
 - `diagnose_missing_parameters()`
 - `draft_input_templates()`
 - `generate_mock_pmslt_inputs()`
@@ -338,3 +426,5 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 6. Keep mock DisMod functions clearly labelled as teaching-only.
 7. Prefer explicit CSV schemas and validators over implicit assumptions.
 8. Keep documentation close to the template files that students must fill.
+9. Port from `PMSLT_Template_v1.R` in small tested slices with artifact updates
+   at each step.
