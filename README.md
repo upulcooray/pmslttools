@@ -16,6 +16,11 @@ This first scaffold includes:
 - `draft_input_templates()` to generate beginner-friendly CSV templates.
 - `validate_spec()` and `diagnose_missing_parameters()` to explain modelling
   requirements before data collection.
+- `solve_dismod_lite()` to read an `input_raw` directory, disaggregate coarse
+  disease age groups to the template age grid, and fill missing disease
+  parameters where simple illness-death consistency equations are identifiable.
+  It can optionally propagate uncertainty from `lower_95` and `upper_95`
+  columns by Monte Carlo sampling.
 
 Simulation engine functions will be migrated from the existing PMSLT template in
 later modules.
@@ -38,6 +43,8 @@ spec <- pmslt_spec(
 )
 
 draft_input_templates(spec, output_dir = "inputs_raw")
+solve_dismod_lite("inputs_raw")
+solve_dismod_lite("inputs_raw", uncertainty = TRUE, draws = 2000, seed = 1)
 ```
 
 This creates the CSV templates and a `README_inputs_raw.md` guide inside the
