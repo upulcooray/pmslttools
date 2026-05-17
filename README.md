@@ -72,3 +72,19 @@ single-year continuous-age predictions and PMSLT age-grid predictions:
 - `dismod_continuous_age_curve.png`
 
 It is for learning the workflow shape only, not a substitute for real DisMod-MR.
+
+## Downstream PMSLT disease module
+
+After DisMod processing, use `pmslt_disease_epi.csv` as the disease input:
+
+```r
+disease_epi <- read_pmslt_disease_inputs(
+  "mock_inputs_raw/mock_dismod_output/pmslt_disease_epi.csv"
+)
+
+disease_deltas <- run_pmslt_disease_lifetable(disease_epi)
+```
+
+The package treats this post-DisMod file as the canonical disease input for
+subsequent PMSLT modules. Raw disease inputs are retained as an audit trail, not
+as the direct model input.
