@@ -2,7 +2,9 @@
 #'
 #' Reads the post-DisMod disease epidemiology file used by downstream PMSLT
 #' disease lifetable modules. This is the canonical disease input after DisMod
-#' processing, not the raw `05_disease_epidemiology_raw.csv` file.
+#' processing, not the raw `05_disease_epidemiology_raw.csv` file and not an
+#' intermediate DisMod-lite diagnostic output. It uses exact single-year integer
+#' `age`; age-banded inputs belong upstream or in reporting summaries.
 #'
 #' @param path CSV path. Defaults to `pmslt_disease_epi.csv`.
 #' @param validate Logical. Should required columns and basic values be checked?
@@ -24,27 +26,65 @@ read_pmslt_disease_inputs <- function(path = "pmslt_disease_epi.csv",
 #' Validate PMSLT-ready disease epidemiology inputs
 #'
 #' Checks the post-DisMod disease input structure expected by downstream PMSLT
-#' disease modules.
+#' disease modules. The required columns come from the central
+#' `pmslt_disease_epi.csv` schema. The canonical PMSLT-ready file uses exact
+#' single-year integer `age`; age-banded raw inputs should be checked with
+#' [validate_raw_inputs()] before DisMod processing.
 #'
 #' @param data Data frame, usually read from `pmslt_disease_epi.csv`.
 #'
 #' @return Invisibly returns `TRUE` if valid.
 #' @export
 validate_pmslt_disease_inputs <- function(data) {
-  required <- c(
-    "age_start", "age_end", "age_label", "sex", "stratum", "disease",
-    "time_step", "incidence_BAU", "prevalence_initial", "remission_rate",
-    "excess_mortality_BAU", "case_fatality_BAU", "disability_weight"
-  )
-  require_columns(data, required, "pmslt_disease_epi.csv")
+  schema <- pmslt_disease_epi_schema()
+  age_band_cols <- intersect(c("age_start", "age_end", "age_label"), names(data))
+  if (length(age_band_cols) > 0) {
+    stop(
+      schema$file,
+      " must use exact single-year `age`, not age-band columns: ",
+      paste(age_band_cols, collapse = ", "),
+      ". Raw age-banded disease inputs belong in 05_disease_epidemiology_raw.csv; run DisMod-lite, mock DisMod, or a future DisMod-MR adapter before using this PMSLT-ready file.",
+      call. = FALSE
+    )
+  }
+  required <- schema$columns$column[schema$columns$requirement == "required"]
+  require_columns(data, required, schema$file)
 
-  numeric_cols <- c(
-    "age_start", "age_end", "time_step", "incidence_BAU",
-    "prevalence_initial", "remission_rate", "excess_mortality_BAU",
-    "case_fatality_BAU", "disability_weight"
+  numeric_cols <- intersect(
+    c(
+      "age", "time_step",
+      schema$columns$column[schema$columns$validation_type %in% c(
+        "non_negative_rate", "proportion_0_1", "annual_proportional_change"
+      )]
+    ),
+    names(data)
   )
   for (col in numeric_cols) {
-    data[[col]] <- as.numeric(data[[col]])
+    original <- data[[col]]
+    present <- !(is.na(original) | !nzchar(trimws(as.character(original))))
+    numeric_value <- suppressWarnings(as.numeric(original))
+    if (any(present & is.na(numeric_value))) {
+      stop(
+        "`", col, "` must be numeric in ", schema$file, ".",
+        call. = FALSE
+      )
+    }
+    data[[col]] <- numeric_value
+  }
+
+  missing_age <- is.na(data$age)
+  bad_age <- missing_age |
+    abs(data$age - round(data$age)) > .Machine$double.eps^0.5
+  if (any(bad_age)) {
+    stop("`age` must contain non-missing whole-number single-year ages in ", schema$file, ".", call. = FALSE)
+  }
+
+  if ("time_step" %in% names(data)) {
+    bad_time <- !is.na(data$time_step) &
+      abs(data$time_step - round(data$time_step)) > .Machine$double.eps^0.5
+    if (any(bad_time)) {
+      stop("`time_step` must contain whole numbers in ", schema$file, ".", call. = FALSE)
+    }
   }
 
   non_negative_cols <- c(
@@ -54,7 +94,7 @@ validate_pmslt_disease_inputs <- function(data) {
   for (col in non_negative_cols) {
     bad <- !is.na(data[[col]]) & data[[col]] < 0
     if (any(bad)) {
-      stop("`", col, "` must be non-negative in pmslt_disease_epi.csv.", call. = FALSE)
+      stop("`", col, "` must be non-negative in ", schema$file, ".", call. = FALSE)
     }
   }
 
@@ -65,11 +105,17 @@ validate_pmslt_disease_inputs <- function(data) {
   if (any(!is.na(data$disability_weight) & data$disability_weight > 1)) {
     stop("`disability_weight` should be between 0 and 1.", call. = FALSE)
   }
+  if ("prevalence_BAU_reference" %in% names(data)) {
+    ref_prev <- data$prevalence_BAU_reference
+    if (any(!is.na(ref_prev) & (ref_prev < 0 | ref_prev > 1))) {
+      stop("`prevalence_BAU_reference` must be between 0 and 1 when supplied.", call. = FALSE)
+    }
+  }
 
-  keys <- unique(data[c("age_start", "sex", "stratum", "disease")])
+  keys <- unique(data[c("age", "sex", "stratum", "disease")])
   missing_initial <- vapply(seq_len(nrow(keys)), function(i) {
     rows <- data[
-      data$age_start == keys$age_start[[i]] &
+      data$age == keys$age[[i]] &
         data$sex == keys$sex[[i]] &
         data$stratum == keys$stratum[[i]] &
         data$disease == keys$disease[[i]] &
@@ -95,11 +141,12 @@ validate_pmslt_disease_inputs <- function(data) {
 #'
 #' @param disease_epi Data frame from [read_pmslt_disease_inputs()] or path to
 #'   `pmslt_disease_epi.csv`.
-#' @param pif_data Optional data frame with `age_start`, `sex`, `stratum`,
+#' @param pif_data Optional data frame with `age`, `sex`, `stratum`,
 #'   `disease`, `time_step`, and `pif`. If omitted, intervention equals BAU.
 #' @param direct_effect_data Optional data frame with direct disease effects.
-#'   Expected columns are `age_start`, `sex`, `stratum`, `disease`,
-#'   `incidence_rr`, `cfr_rr`, `morbidity_rr`, and `coverage`. If an
+#'   Expected columns are `age`, `sex`, `stratum`, `disease`, `incidence_rr`,
+#'   `cfr_rr`, `morbidity_rr`, and `coverage`. Age-banded direct-effect rows
+#'   from raw templates are expanded to exact ages before merging. If an
 #'   `intervention` column is present, use `intervention` to select one arm.
 #' @param intervention Optional intervention arm name used to filter PIF and
 #'   direct-effect data when those inputs contain multiple scenarios.
@@ -125,11 +172,17 @@ run_pmslt_disease_lifetable <- function(disease_epi,
     data$pif <- 0
   } else {
     pif_data <- filter_intervention_rows(pif_data, intervention, "pif_data")
-    require_columns(pif_data, c("age_start", "sex", "stratum", "disease", "time_step", "pif"), "pif_data")
+    pif_data <- align_age_banded_effects(
+      effects = pif_data,
+      disease_epi = data,
+      value_cols = "pif",
+      time_varying = TRUE,
+      label = "pif_data"
+    )
     data <- merge(
       data,
-      pif_data[c("age_start", "sex", "stratum", "disease", "time_step", "pif")],
-      by = c("age_start", "sex", "stratum", "disease", "time_step"),
+      pif_data[c("age", "sex", "stratum", "disease", "time_step", "pif")],
+      by = c("age", "sex", "stratum", "disease", "time_step"),
       all.x = TRUE,
       sort = FALSE
     )
@@ -141,12 +194,12 @@ run_pmslt_disease_lifetable <- function(disease_epi,
   data$case_fatality_Int <- data$case_fatality_BAU * data$cfr_multiplier
   data$disability_weight_Int <- data$disability_weight * data$morbidity_multiplier
 
-  split_key <- paste(data$disease, data$age_start, data$sex, data$stratum, sep = "\r")
+  split_key <- paste(data$disease, data$age, data$sex, data$stratum, sep = "\r")
   groups <- split(data, split_key)
   rows <- lapply(groups, function(group) run_one_disease_group(group, cohort_size))
   out <- do.call(rbind, rows)
   row.names(out) <- NULL
-  out <- out[order(out$disease, out$sex, out$stratum, out$age_start, out$time_step), ]
+  out <- out[order(out$disease, out$sex, out$stratum, out$age, out$time_step), ]
   row.names(out) <- NULL
   out
 }
@@ -203,7 +256,7 @@ run_one_disease_group <- function(group, cohort_size) {
   morb_int <- prev_int * group$disability_weight_Int
 
   data.frame(
-    group[c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "time_step")],
+    group[c("age", "sex", "stratum", "disease", "time_step")],
     incidence_BAU = group$incidence_BAU,
     incidence_Int = group$incidence_Int,
     pif = group$pif,
@@ -403,9 +456,11 @@ validate_risk_prevalence_inputs <- function(risk_prevalence,
 #' Run PMSLT disease lifetables for one or more intervention arms
 #'
 #' This is the beginner-facing intervention runner. It accepts post-DisMod
-#' disease inputs, optional raw risk-factor prevalence plus relative risks, and
-#' optional direct disease effects. Risk-factor inputs are converted to PIFs
-#' automatically. Direct effects can be used alone or alongside PIFs.
+#' exact-age disease inputs, optional raw risk-factor prevalence plus relative
+#' risks, and optional direct disease effects. Risk-factor inputs are converted
+#' to PIFs automatically. Direct effects can be used alone or alongside PIFs.
+#' Age-banded intervention rows are expanded to the exact ages present in
+#' `pmslt_disease_epi.csv` where that expansion is intentional.
 #'
 #' @param disease_epi Data frame from [read_pmslt_disease_inputs()] or path to
 #'   `pmslt_disease_epi.csv`.
@@ -474,10 +529,12 @@ apply_direct_disease_effects <- function(data, direct_effect_data, intervention)
   }
 
   direct_effect_data <- filter_intervention_rows(direct_effect_data, intervention, "direct_effect_data")
-  require_columns(
-    direct_effect_data,
-    c("age_start", "sex", "stratum", "disease", "incidence_rr", "cfr_rr", "morbidity_rr", "coverage"),
-    "direct_effect_data"
+  direct_effect_data <- align_age_banded_effects(
+    effects = direct_effect_data,
+    disease_epi = data,
+    value_cols = c("incidence_rr", "cfr_rr", "morbidity_rr", "coverage"),
+    time_varying = FALSE,
+    label = "direct_effect_data"
   )
 
   direct_effect_data$coverage <- ifelse(is.na(as.numeric(direct_effect_data$coverage)), 0, as.numeric(direct_effect_data$coverage))
@@ -491,11 +548,11 @@ apply_direct_disease_effects <- function(data, direct_effect_data, intervention)
   direct_effect_data$cfr_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$cfr_rr)
   direct_effect_data$morbidity_multiplier <- 1 - direct_effect_data$coverage * (1 - direct_effect_data$morbidity_rr)
 
-  keep <- c("age_start", "sex", "stratum", "disease", "incidence_multiplier", "cfr_multiplier", "morbidity_multiplier")
+  keep <- c("age", "sex", "stratum", "disease", "incidence_multiplier", "cfr_multiplier", "morbidity_multiplier")
   data <- merge(
     data,
     direct_effect_data[keep],
-    by = c("age_start", "sex", "stratum", "disease"),
+    by = c("age", "sex", "stratum", "disease"),
     all.x = TRUE,
     sort = FALSE,
     suffixes = c("", "_direct")
@@ -506,6 +563,45 @@ apply_direct_disease_effects <- function(data, direct_effect_data, intervention)
     data[[direct_name]] <- NULL
   }
   data
+}
+
+align_age_banded_effects <- function(effects, disease_epi, value_cols, time_varying, label) {
+  key_cols <- c("sex", "stratum", "disease")
+  required <- c(key_cols, value_cols)
+  if (isTRUE(time_varying)) {
+    required <- c(required, "time_step")
+  }
+  require_columns(effects, required, label)
+
+  if ("age" %in% names(effects)) {
+    keep <- c("age", key_cols, if (isTRUE(time_varying)) "time_step", value_cols)
+    out <- effects[keep]
+    out$age <- as.numeric(out$age)
+    return(out)
+  }
+
+  require_columns(effects, c("age_start", "age_end"), label)
+  effect_rows <- effects
+  effect_rows$.effect_row <- seq_len(nrow(effect_rows))
+  epi_keys <- unique(disease_epi[c("age", key_cols, if (isTRUE(time_varying)) "time_step")])
+
+  joined <- merge(
+    epi_keys,
+    effect_rows,
+    by = c(key_cols, if (isTRUE(time_varying)) "time_step"),
+    all.x = FALSE,
+    sort = FALSE
+  )
+  joined <- joined[
+    joined$age >= as.numeric(joined$age_start) &
+      joined$age <= as.numeric(joined$age_end),
+    ,
+    drop = FALSE
+  ]
+  keep <- c("age", key_cols, if (isTRUE(time_varying)) "time_step", value_cols)
+  out <- joined[keep]
+  row.names(out) <- NULL
+  out
 }
 
 filter_intervention_rows <- function(data, intervention, label) {

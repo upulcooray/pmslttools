@@ -21,6 +21,9 @@ test_that("mock inputs and mock DisMod outputs are generated", {
 
   pmslt_epi <- utils::read.csv(file.path(out, "mock_dismod_output", "pmslt_disease_epi.csv"))
   expect_true(all(c("incidence_BAU", "prevalence_initial", "case_fatality_BAU") %in% names(pmslt_epi)))
+  expect_true("age" %in% names(pmslt_epi))
+  expect_false(any(c("age_start", "age_end", "age_label") %in% names(pmslt_epi)))
+  expect_true(validate_pmslt_disease_inputs(pmslt_epi))
   expect_true(any(pmslt_epi$time_step > 0))
   expect_true(all(is.na(pmslt_epi$prevalence_initial[pmslt_epi$time_step > 0])))
 })

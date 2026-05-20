@@ -1,6 +1,6 @@
 # CODEX Notes for pmslttools
 
-Last updated: 2026-05-17
+Last updated: 2026-05-20
 
 ## Project Purpose
 
@@ -16,7 +16,8 @@ The package should guide users through:
 4. Running or preparing DisMod-style disease parameter processing.
 5. Producing `pmslt_disease_epi.csv` as the canonical post-DisMod disease input.
 6. Running modular PMSLT disease and intervention workflows.
-7. Later integrating full all-cause lifetable, outcomes, costs, and PSA.
+7. Initializing the deterministic all-cause BAU lifetable.
+8. Later integrating disease deltas, outcomes, costs, and PSA.
 
 ## Repository
 
@@ -37,7 +38,8 @@ The package should guide users through:
 
 1. Beginner-facing functions must be explicit and plain-language.
 2. Raw inputs, DisMod outputs, and PMSLT-ready inputs must remain separate.
-3. `pmslt_disease_epi.csv` is the canonical downstream disease input.
+3. `pmslt_disease_epi.csv` is the canonical downstream disease input and uses
+   exact single-year integer `age`.
 4. Multiple intervention arms should be represented at template generation
    stage through `pmslt_spec(intervention_arms = ...)`.
 5. PIF-mediated effects and direct disease effects must remain conceptually
@@ -46,6 +48,9 @@ The package should guide users through:
    for real DisMod-MR.
 7. Prefer base R unless a dependency clearly improves usability.
 8. Avoid broad refactors until schemas and workflow contracts are stable.
+9. Raw epidemiology templates may remain age-banded; future PMSLT engine
+   modules should use exact integer age internally and aggregate ages only for
+   reporting outputs.
 
 ## Current Public API
 
@@ -70,6 +75,10 @@ The package should guide users through:
 - `calculate_pif_from_inputs()`
 - `run_pmslt_disease_lifetable()`
 - `run_pmslt_interventions()`
+- `initialize_pmslt_lifetable()`
+- `run_pmslt_lifetable_bau()`
+- `integrate_disease_deltas()`
+- `summarise_pmslt_results()`
 
 ## Important Files
 
@@ -79,9 +88,12 @@ The package should guide users through:
 - `R/diagnostics.R`: missing disease parameter diagnostics.
 - `R/dismod-lite.R`: simple teaching-oriented DisMod-style solver.
 - `R/mock-dismod.R`: mock data, mock DisMod outputs, plots, continuous-age
-  processing, PMSLT disease input preparation.
+  processing, single-year PMSLT disease input preparation.
 - `R/pmslt-workflow.R`: post-DisMod disease input validation, PIF calculation,
   disease lifetable, multi-arm intervention runner.
+- `R/main-lifetable.R`: deterministic BAU all-cause lifetable initialization,
+  single-year ageing, disease-attributable quantity attachment, and summary
+  helpers.
 - `tests/testthat/`: package tests.
 
 ## Current Workflow Shape
@@ -109,6 +121,59 @@ results <- run_pmslt_interventions(
   relative_risks = "inputs_raw/09_relative_risks.csv",
   direct_effects = "inputs_raw/10_direct_intervention_effects.csv"
 )
+
+bau_lifetable <- initialize_pmslt_lifetable(
+  population = data.frame(
+    age = 40:41,
+    sex = "female",
+    stratum = "total",
+    population = c(1000, 900)
+  ),
+  mortality = data.frame(
+    age = 40:41,
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.01, 0.02)
+  )
+)
+
+bau_cycles <- run_pmslt_lifetable_bau(
+  population = data.frame(
+    age = 40:41,
+    sex = "female",
+    stratum = "total",
+    population = c(1000, 900)
+  ),
+  mortality = data.frame(
+    age = 40:41,
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.01, 0.02)
+  ),
+  horizon = 5
+)
+
+disease_attached <- integrate_disease_deltas(
+  lifetable = run_pmslt_lifetable_bau(
+    population = data.frame(
+      age = 40:41,
+      sex = "female",
+      stratum = "total",
+      population = c(1000, 900)
+    ),
+    mortality = data.frame(
+      age = 40:41,
+      sex = "female",
+      stratum = "total",
+      mortality_rate = c(0.01, 0.02)
+    ),
+    horizon = 1
+  ),
+  disease_epi = "inputs_raw/mock_dismod_output/pmslt_disease_epi.csv"
+)
+
+summarise_pmslt_results(disease_attached)
+summarise_pmslt_results(disease_attached, by = c("disease", "age"))
 ```
 
 ## Current Known Issues
@@ -116,19 +181,24 @@ results <- run_pmslt_interventions(
 1. `run_pmslt_disease_lifetable()` is not a full PMSLT model yet. It is a
    disease-specific module.
 2. Real DisMod-MR integration does not exist yet.
-3. CSV schemas are spread across template generation, input guide, validators,
-   and downstream functions.
-4. `demo_mock_inputs_raw/` may need regeneration after the latest multi-arm
+3. `demo_mock_inputs_raw/` may need regeneration after the latest multi-arm
    direct-effect changes.
+4. `initialize_pmslt_lifetable()` runs one BAU time step only.
+5. `integrate_disease_deltas()` attaches disease-attributable cases, deaths,
+   and YLDs beside BAU all-cause lifetable rows. It does not subtract disease
+   deaths from all-cause deaths.
+6. `run_pmslt_lifetable_bau()` ages survivors forward across BAU cycles, but
+   it still does not add births, migration, entrants, interventions, costs,
+   equity, or PSA.
+7. `summarise_pmslt_results()` reports exact-age summaries only; age-band
+   reporting is future work.
 
 ## Next Best Tasks
 
-1. Create central schema definitions in `R/schema.R`.
-2. Add `validate_raw_inputs()`.
-3. Formalise the `pmslt_disease_epi.csv` schema.
-4. Regenerate `demo_mock_inputs_raw/`.
-5. Add a full beginner vignette.
-6. Start main all-cause lifetable module after schemas stabilise.
+1. Regenerate `demo_mock_inputs_raw/`.
+2. Add a full beginner vignette.
+3. Decide the later full main-lifetable convention for applying disease
+   mortality and morbidity deltas.
 
 ## Validation Commands
 

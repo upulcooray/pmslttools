@@ -24,7 +24,7 @@ test_that("disease lifetable consumes pmslt_disease_epi directly", {
   expect_equal(max(abs(bau$delta_morbidity), na.rm = TRUE), 0)
 
   disease_epi <- read_pmslt_disease_inputs(path)
-  pif <- unique(disease_epi[c("age_start", "sex", "stratum", "disease", "time_step")])
+  pif <- unique(disease_epi[c("age", "sex", "stratum", "disease", "time_step")])
   pif$pif <- ifelse(pif$disease == "CHD" & pif$time_step > 0, 0.1, 0)
   intervention <- run_pmslt_disease_lifetable(disease_epi, pif_data = pif)
 
@@ -81,4 +81,41 @@ test_that("intervention runner supports PIF and direct disease effects", {
   expect_equal(sort(unique(results$intervention)), c("Tobacco tax", "Tobacco tax plus acute care"))
   expect_true(any(results$cfr_multiplier < 1))
   expect_true(any(abs(results$delta_mortality) > 0, na.rm = TRUE))
+})
+
+test_that("intervention runner accepts exact-age disease inputs with age-banded direct effects", {
+  out <- tempfile("mock_inputs_")
+  generate_mock_pmslt_inputs(output_dir = out)
+  mock_dismod_output(input_dir = out)
+
+  disease_epi <- read_pmslt_disease_inputs(file.path(out, "mock_dismod_output", "pmslt_disease_epi.csv"))
+  expect_true("age" %in% names(disease_epi))
+  expect_false(any(c("age_start", "age_end", "age_label") %in% names(disease_epi)))
+
+  direct_effects <- data.frame(
+    age_start = 40L,
+    age_end = 80L,
+    age_label = "40-80",
+    sex = "male",
+    stratum = "total",
+    disease = "CHD",
+    incidence_rr = 1,
+    cfr_rr = 0.8,
+    morbidity_rr = 1,
+    coverage = 1,
+    source = "test",
+    notes = "",
+    stringsAsFactors = FALSE
+  )
+
+  results <- run_pmslt_interventions(
+    disease_epi = disease_epi,
+    direct_effects = direct_effects
+  )
+
+  chd_male <- results[results$disease == "CHD" & results$sex == "male", ]
+  expect_true(all(c("age", "cfr_multiplier", "delta_mortality") %in% names(results)))
+  expect_false(any(c("age_start", "age_end", "age_label") %in% names(results)))
+  expect_true(any(chd_male$cfr_multiplier < 1))
+  expect_true(any(abs(chd_male$delta_mortality) > 0, na.rm = TRUE))
 })

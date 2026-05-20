@@ -39,6 +39,9 @@ test_that("solve_dismod_lite solves prevalence and disaggregates coarse ages", {
   solved_20 <- solved[solved$age_start == 20 & solved$disease == "CHD", ]
   solved_25 <- solved[solved$age_start == 25 & solved$disease == "CHD", ]
 
+  expect_true(all(solved$age_start == solved$age_end))
+  expect_true(all(as.numeric(solved$age_start) == floor(as.numeric(solved$age_start))))
+  expect_true(all(20:29 %in% solved$age_start))
   expect_equal(solved_20$prevalence, 0.02 / (0.02 + 0.01 + 0.03))
   expect_equal(solved_25$prevalence, 0.02 / (0.02 + 0.01 + 0.03))
   expect_equal(solved_20$incidence_source, "disaggregated_constant")
@@ -77,8 +80,8 @@ test_that("solve_dismod_lite prefers filled long input over raw input", {
 
   result <- solve_dismod_lite(out)
 
-  expect_equal(result$solved_wide$incidence_rate, 0.04)
-  expect_equal(result$solved_wide$incidence_source, "exact")
+  expect_true(all(result$solved_wide$incidence_rate == 0.04))
+  expect_true(all(result$solved_wide$incidence_source == "disaggregated_constant"))
 })
 
 test_that("solve_dismod_lite propagates uncertainty when bounds are available", {
@@ -115,11 +118,11 @@ test_that("solve_dismod_lite propagates uncertainty when bounds are available", 
   solved <- result$solved_wide
   long_result <- result$solved_long[result$solved_long$parameter == "prevalence", ]
 
-  expect_equal(solved$prevalence, 0.02 / (0.02 + 0.01 + 0.03))
-  expect_false(is.na(solved$prevalence_lower_95))
-  expect_false(is.na(solved$prevalence_upper_95))
-  expect_lt(solved$prevalence_lower_95, solved$prevalence)
-  expect_gt(solved$prevalence_upper_95, solved$prevalence)
+  expect_true(all(solved$prevalence == 0.02 / (0.02 + 0.01 + 0.03)))
+  expect_true(all(!is.na(solved$prevalence_lower_95)))
+  expect_true(all(!is.na(solved$prevalence_upper_95)))
+  expect_true(all(solved$prevalence_lower_95 < solved$prevalence))
+  expect_true(all(solved$prevalence_upper_95 > solved$prevalence))
   expect_equal(long_result$lower_95, solved$prevalence_lower_95)
   expect_equal(long_result$upper_95, solved$prevalence_upper_95)
 })

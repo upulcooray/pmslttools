@@ -35,7 +35,9 @@ column.
 }
 \description{
 This is the beginner-facing intervention runner. It accepts post-DisMod
-disease inputs, optional raw risk-factor prevalence plus relative risks, and
-optional direct disease effects. Risk-factor inputs are converted to PIFs
-automatically. Direct effects can be used alone or alongside PIFs.
+exact-age disease inputs, optional raw risk-factor prevalence plus relative
+risks, and optional direct disease effects. Risk-factor inputs are converted to
+PIFs automatically. Direct effects can be used alone or alongside PIFs.
+Age-banded intervention rows are expanded to the exact ages present in
+\code{pmslt_disease_epi.csv} where that expansion is intentional.
 }

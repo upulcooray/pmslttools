@@ -1,0 +1,581 @@
+lifetable_population <- function() {
+  data.frame(
+    age = c(40L, 41L),
+    sex = c("female", "female"),
+    stratum = c("total", "total"),
+    population = c(1000, 800),
+    stringsAsFactors = FALSE
+  )
+}
+
+lifetable_mortality <- function() {
+  data.frame(
+    age = c(40L, 41L),
+    sex = c("female", "female"),
+    stratum = c("total", "total"),
+    mortality_rate = c(0.01, 0.02),
+    stringsAsFactors = FALSE
+  )
+}
+
+lifetable_disease_epi <- function(diseases = "CHD") {
+  rows <- lapply(diseases, function(disease) {
+    data.frame(
+      age = c(40L, 41L),
+      sex = "female",
+      stratum = "total",
+      disease = disease,
+      time_step = 0L,
+      incidence_BAU = c(0.01, 0.02),
+      prevalence_initial = c(0.10, 0.20),
+      remission_rate = 0,
+      excess_mortality_BAU = c(0.02, 0.03),
+      case_fatality_BAU = c(0.03, 0.04),
+      disability_weight = c(0.20, 0.30),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out
+}
+
+test_that("valid single-year inputs initialize deterministic lifetable quantities", {
+  result <- initialize_pmslt_lifetable(lifetable_population(), lifetable_mortality())
+
+  expect_s3_class(result, "pmslt_lifetable")
+  expect_equal(result$time_step, c(0L, 0L))
+  expect_equal(result$deaths, c(10, 16))
+  expect_equal(result$alive_end, c(990, 784))
+  expect_equal(result$person_years, c(995, 792))
+  expect_equal(result$morbidity_rate, c(0, 0))
+  expect_equal(result$yld_rate, result$morbidity_rate)
+})
+
+test_that("file path inputs and data frame inputs both work", {
+  population_path <- tempfile(fileext = ".csv")
+  mortality_path <- tempfile(fileext = ".csv")
+  utils::write.csv(lifetable_population(), population_path, row.names = FALSE)
+  utils::write.csv(lifetable_mortality(), mortality_path, row.names = FALSE)
+
+  from_paths <- initialize_pmslt_lifetable(population_path, mortality_path)
+  from_data <- initialize_pmslt_lifetable(lifetable_population(), lifetable_mortality())
+
+  expect_equal(unclass(from_paths), unclass(from_data), ignore_attr = TRUE)
+})
+
+test_that("template-style all-cause input column names are accepted", {
+  population <- lifetable_population()
+  names(population)[names(population) == "population"] <- "initial_population"
+  mortality <- lifetable_mortality()
+  names(mortality)[names(mortality) == "mortality_rate"] <- "acmr_BAU"
+
+  result <- initialize_pmslt_lifetable(population, mortality)
+
+  expect_equal(result$population, c(1000, 800))
+  expect_equal(result$mortality_rate, c(0.01, 0.02))
+})
+
+test_that("missing required columns produce clear errors", {
+  population <- lifetable_population()
+  population$population <- NULL
+
+  expect_error(
+    initialize_pmslt_lifetable(population, lifetable_mortality()),
+    "population.*missing.*population"
+  )
+})
+
+test_that("non-integer ages are rejected", {
+  population <- lifetable_population()
+  population$age[[1]] <- 40.5
+
+  expect_error(
+    initialize_pmslt_lifetable(population, lifetable_mortality()),
+    "whole-number single-year age"
+  )
+})
+
+test_that("negative population is rejected", {
+  population <- lifetable_population()
+  population$population[[1]] <- -1
+
+  expect_error(
+    initialize_pmslt_lifetable(population, lifetable_mortality()),
+    "population.*non-negative"
+  )
+})
+
+test_that("mortality_rate outside 0 to 1 is rejected", {
+  mortality <- lifetable_mortality()
+  mortality$mortality_rate[[1]] <- 1.2
+
+  expect_error(
+    initialize_pmslt_lifetable(lifetable_population(), mortality),
+    "mortality_rate.*between 0 and 1"
+  )
+})
+
+test_that("incomplete mortality joins are rejected", {
+  mortality <- lifetable_mortality()[1, ]
+
+  expect_error(
+    initialize_pmslt_lifetable(lifetable_population(), mortality),
+    "mortality.*missing rows for population keys"
+  )
+})
+
+test_that("optional morbidity is joined when supplied", {
+  morbidity <- data.frame(
+    age = c(40L, 41L),
+    sex = c("female", "female"),
+    stratum = c("total", "total"),
+    morbidity_rate = c(0.12, 0.15),
+    stringsAsFactors = FALSE
+  )
+
+  result <- initialize_pmslt_lifetable(
+    lifetable_population(),
+    lifetable_mortality(),
+    morbidity = morbidity
+  )
+
+  expect_equal(result$morbidity_rate, c(0.12, 0.15))
+  expect_equal(result$yld_rate, c(0.12, 0.15))
+})
+
+test_that("incomplete morbidity joins are rejected when morbidity is supplied", {
+  morbidity <- data.frame(
+    age = 40L,
+    sex = "female",
+    stratum = "total",
+    morbidity_rate = 0.12,
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    initialize_pmslt_lifetable(
+      lifetable_population(),
+      lifetable_mortality(),
+      morbidity = morbidity
+    ),
+    "morbidity.*missing rows for population keys"
+  )
+})
+
+test_that("horizon 1 BAU runner reproduces one-step initializer results", {
+  one_step <- initialize_pmslt_lifetable(lifetable_population(), lifetable_mortality())
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+
+  expect_s3_class(bau, "pmslt_lifetable")
+  expect_equal(
+    bau[names(one_step)],
+    one_step,
+    ignore_attr = TRUE
+  )
+  expect_equal(bau$yld, c(0, 0))
+})
+
+test_that("horizon defaults to spec horizon when supplied", {
+  spec <- pmslt_spec(
+    intervention = "Test",
+    mechanism = "risk_factor",
+    diseases = "CHD",
+    risk_factors = "Smoking",
+    risk_categories = list(Smoking = c("Never", "Current")),
+    ages = data.frame(age_start = 40, age_end = 41, age_label = "40-41"),
+    sexes = "female",
+    strata = "total",
+    horizon = 2
+  )
+
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), spec = spec)
+
+  expect_equal(sort(unique(bau$time_step)), c(0L, 1L))
+  expect_equal(attr(bau, "spec"), spec)
+})
+
+test_that("horizon greater than 1 ages survivors forward correctly", {
+  population <- data.frame(
+    age = c(40L, 41L, 42L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 200, 300),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 41L, 42L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = 0.1,
+    stringsAsFactors = FALSE
+  )
+
+  bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 3)
+  t1 <- bau[bau$time_step == 1, ]
+  t2 <- bau[bau$time_step == 2, ]
+
+  expect_equal(t1$population[t1$age == 40], 0)
+  expect_equal(t1$population[t1$age == 41], 90)
+  expect_equal(t1$population[t1$age == 42], 450)
+  expect_equal(t2$population[t2$age == 40], 0)
+  expect_equal(t2$population[t2$age == 41], 0)
+  expect_equal(t2$population[t2$age == 42], 486)
+})
+
+test_that("maximum age is retained as open-ended", {
+  population <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 200),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 2)
+  t1 <- bau[bau$time_step == 1, ]
+
+  expect_equal(t1$population[t1$age == 40], 0)
+  expect_equal(t1$population[t1$age == 41], 300)
+  expect_equal(attr(bau, "ageing_rule"), "open_ended_max_age")
+})
+
+test_that("static mortality rates are reused when time_step is absent", {
+  population <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 0),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.1, 0.2),
+    stringsAsFactors = FALSE
+  )
+
+  bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 2)
+  t1_age41 <- bau[bau$time_step == 1 & bau$age == 41, ]
+
+  expect_equal(t1_age41$population, 90)
+  expect_equal(t1_age41$mortality_rate, 0.2)
+  expect_equal(t1_age41$deaths, 18)
+})
+
+test_that("time-varying mortality rates are matched by time_step", {
+  population <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 0),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    time_step = c(0L, 0L, 1L, 1L),
+    age = c(40L, 41L, 40L, 41L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.1, 0.2, 0.3, 0.4),
+    stringsAsFactors = FALSE
+  )
+
+  bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 2)
+  t1_age41 <- bau[bau$time_step == 1 & bau$age == 41, ]
+
+  expect_equal(t1_age41$population, 90)
+  expect_equal(t1_age41$mortality_rate, 0.4)
+  expect_equal(t1_age41$deaths, 36)
+})
+
+test_that("morbidity rates are joined and carried through each cycle", {
+  population <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 0),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.1, 0.2),
+    stringsAsFactors = FALSE
+  )
+  morbidity <- data.frame(
+    time_step = c(0L, 0L, 1L, 1L),
+    age = c(40L, 41L, 40L, 41L),
+    sex = "female",
+    stratum = "total",
+    morbidity_rate = c(0.01, 0.02, 0.03, 0.04),
+    stringsAsFactors = FALSE
+  )
+
+  bau <- run_pmslt_lifetable_bau(population, mortality, morbidity, horizon = 2)
+  t1_age41 <- bau[bau$time_step == 1 & bau$age == 41, ]
+
+  expect_equal(t1_age41$morbidity_rate, 0.04)
+  expect_equal(t1_age41$yld_rate, 0.04)
+  expect_equal(t1_age41$person_years, 81)
+  expect_equal(t1_age41$yld, 81 * 0.04)
+})
+
+test_that("invalid horizon is rejected", {
+  expect_error(
+    run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1.5),
+    "horizon.*positive whole number"
+  )
+  expect_error(
+    run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 0),
+    "horizon.*positive whole number"
+  )
+})
+
+test_that("incomplete time-varying rate joins are rejected", {
+  mortality <- data.frame(
+    time_step = c(0L, 0L, 1L),
+    age = c(40L, 41L, 40L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.01, 0.02, 0.03),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    run_pmslt_lifetable_bau(lifetable_population(), mortality, horizon = 2),
+    "mortality at time_step 1.*missing rows"
+  )
+})
+
+test_that("no births migration or new entrants are introduced", {
+  population <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 0),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 3)
+
+  expect_equal(bau$population[bau$time_step > 0 & bau$age == 40], c(0, 0))
+  expect_equal(
+    as.numeric(tapply(bau$population, bau$time_step, sum)),
+    c(100, 100, 100)
+  )
+})
+
+test_that("population ages must be consecutive single-year ages", {
+  population <- data.frame(
+    age = c(40L, 42L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 200),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 42L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.1, 0.2),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    run_pmslt_lifetable_bau(population, mortality, horizon = 2),
+    "consecutive single-year ages"
+  )
+})
+
+test_that("single disease joins to BAU lifetable and preserves long disease output", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  result <- integrate_disease_deltas(lifetable, lifetable_disease_epi())
+  long <- attr(result, "disease_deltas")
+
+  expect_s3_class(result, "pmslt_lifetable")
+  expect_true(all(c("total_disease_cases", "total_disease_deaths", "total_disease_yld") %in% names(result)))
+  expect_true(is.data.frame(long))
+  expect_equal(long$disease, c("CHD", "CHD"))
+  expect_equal(long$age, c(40L, 41L))
+})
+
+test_that("disease cases deaths and YLD use deterministic formulas", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  disease_epi <- lifetable_disease_epi()
+
+  result <- integrate_disease_deltas(lifetable, disease_epi)
+  long <- attr(result, "disease_deltas")
+
+  expect_equal(long$disease_cases, lifetable$person_years * disease_epi$incidence_BAU)
+  expect_equal(
+    long$disease_deaths,
+    lifetable$person_years * disease_epi$prevalence_initial * disease_epi$case_fatality_BAU
+  )
+  expect_equal(
+    long$disease_yld,
+    lifetable$person_years * disease_epi$prevalence_initial * disease_epi$disability_weight
+  )
+  expect_equal(result$total_disease_cases, long$disease_cases)
+  expect_equal(result$total_disease_deaths, long$disease_deaths)
+  expect_equal(result$total_disease_yld, long$disease_yld)
+})
+
+test_that("multiple diseases aggregate to lifetable row totals", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  disease_epi <- lifetable_disease_epi(c("CHD", "Stroke"))
+  disease_epi$incidence_BAU[disease_epi$disease == "Stroke"] <- c(0.03, 0.04)
+  disease_epi$case_fatality_BAU[disease_epi$disease == "Stroke"] <- c(0.05, 0.06)
+  disease_epi$disability_weight[disease_epi$disease == "Stroke"] <- c(0.40, 0.50)
+
+  result <- integrate_disease_deltas(lifetable, disease_epi)
+  long <- attr(result, "disease_deltas")
+  expected_cases <- as.numeric(tapply(long$disease_cases, long$age, sum))
+  expected_deaths <- as.numeric(tapply(long$disease_deaths, long$age, sum))
+  expected_yld <- as.numeric(tapply(long$disease_yld, long$age, sum))
+
+  expect_equal(result$total_disease_cases, expected_cases)
+  expect_equal(result$total_disease_deaths, expected_deaths)
+  expect_equal(result$total_disease_yld, expected_yld)
+})
+
+test_that("incomplete disease and lifetable joins are rejected", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  disease_epi <- lifetable_disease_epi()
+  disease_epi <- disease_epi[disease_epi$age == 40L, ]
+
+  expect_error(
+    integrate_disease_deltas(lifetable, disease_epi),
+    "missing disease rows for a lifetable row"
+  )
+})
+
+test_that("invalid disease inputs are rejected by existing disease validation", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  disease_epi <- lifetable_disease_epi()
+  disease_epi$incidence_BAU[[1]] <- -0.01
+
+  expect_error(
+    integrate_disease_deltas(lifetable, disease_epi),
+    "non-negative",
+    fixed = TRUE
+  )
+})
+
+test_that("overall BAU summary totals all-cause lifetable metrics", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+
+  summary <- summarise_pmslt_results(bau)
+
+  expect_s3_class(summary, "data.frame")
+  expect_equal(names(summary), c("population", "deaths", "person_years", "yld"))
+  expect_equal(summary$population, sum(bau$population))
+  expect_equal(summary$deaths, sum(bau$deaths))
+  expect_equal(summary$person_years, sum(bau$person_years))
+  expect_equal(summary$yld, sum(bau$yld))
+})
+
+test_that("BAU summary can group by time_step", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 2)
+
+  summary <- summarise_pmslt_results(bau, by = "time_step")
+  expected_population <- as.numeric(tapply(bau$population, bau$time_step, sum))
+
+  expect_equal(names(summary), c("time_step", "population", "deaths", "person_years", "yld"))
+  expect_equal(summary$time_step, c(0L, 1L))
+  expect_equal(summary$population, expected_population)
+})
+
+test_that("BAU summary can group by sex and stratum", {
+  population <- data.frame(
+    age = c(40L, 40L, 40L),
+    sex = c("female", "male", "female"),
+    stratum = c("low", "low", "high"),
+    population = c(100, 200, 300),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 40L, 40L),
+    sex = c("female", "male", "female"),
+    stratum = c("low", "low", "high"),
+    mortality_rate = c(0.01, 0.02, 0.03),
+    stringsAsFactors = FALSE
+  )
+  bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1)
+
+  summary <- summarise_pmslt_results(bau, by = c("sex", "stratum"))
+
+  expect_equal(names(summary), c("sex", "stratum", "population", "deaths", "person_years", "yld"))
+  expect_equal(sum(summary$population), sum(population$population))
+  expect_equal(summary$population[summary$sex == "female" & summary$stratum == "high"], 300)
+  expect_equal(summary$population[summary$sex == "female" & summary$stratum == "low"], 100)
+  expect_equal(summary$population[summary$sex == "male" & summary$stratum == "low"], 200)
+})
+
+test_that("BAU summary can group by exact age", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+
+  summary <- summarise_pmslt_results(bau, by = "age")
+
+  expect_equal(names(summary), c("age", "population", "deaths", "person_years", "yld"))
+  expect_equal(summary$age, c(40L, 41L))
+  expect_equal(summary$population, lifetable_population()$population)
+})
+
+test_that("integrated disease totals are included in non-disease summaries", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  integrated <- integrate_disease_deltas(lifetable, lifetable_disease_epi(c("CHD", "Stroke")))
+
+  summary <- summarise_pmslt_results(integrated)
+
+  expect_true(all(c("total_disease_cases", "total_disease_deaths", "total_disease_yld") %in% names(summary)))
+  expect_equal(summary$total_disease_cases, sum(integrated$total_disease_cases))
+  expect_equal(summary$total_disease_deaths, sum(integrated$total_disease_deaths))
+  expect_equal(summary$total_disease_yld, sum(integrated$total_disease_yld))
+})
+
+test_that("disease-specific summary uses disease_deltas attribute", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  integrated <- integrate_disease_deltas(lifetable, lifetable_disease_epi(c("CHD", "Stroke")))
+  disease_deltas <- attr(integrated, "disease_deltas")
+
+  summary <- summarise_pmslt_results(integrated, by = "disease")
+  expected_cases <- as.numeric(tapply(disease_deltas$disease_cases, disease_deltas$disease, sum))
+
+  expect_equal(names(summary), c("disease", "disease_cases", "disease_deaths", "disease_yld"))
+  expect_equal(summary$disease, c("CHD", "Stroke"))
+  expect_equal(summary$disease_cases, expected_cases)
+})
+
+test_that("requesting disease summary without disease_deltas gives clear error", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+
+  expect_error(
+    summarise_pmslt_results(bau, by = "disease"),
+    "Run `integrate_disease_deltas\\(\\)` first"
+  )
+})
+
+test_that("invalid summary grouping variable gives clear error", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+
+  expect_error(
+    summarise_pmslt_results(bau, by = "age_band"),
+    "Unknown summary grouping variable"
+  )
+})

@@ -14,7 +14,7 @@ prepare_pmslt_disease_inputs(
 \item{input_dir}{Raw input directory containing \code{05_disease_epidemiology_raw.csv}
 and optionally \code{07_bau_trends.csv} and \code{08_risk_factor_prevalence.csv}.}
 
-\item{dismod_output_dir}{Directory containing \code{mock_dismod_output_pmslt_ages.csv}.}
+\item{dismod_output_dir}{Directory containing \code{mock_dismod_output_continuous.csv}.}
 
 \item{output_file}{CSV path for PMSLT-ready disease inputs.}
 
@@ -27,6 +27,11 @@ and optionally \code{07_bau_trends.csv} and \code{08_risk_factor_prevalence.csv}
 Invisibly returns the PMSLT-ready disease input data frame.
 }
 \description{
-Converts post-DisMod PMSLT age-grid predictions into a wide, time-expanded
+Converts post-DisMod single-year predictions into a wide, time-expanded
 disease epidemiology file that can be passed to a PMSLT disease lifetable.
+This writes \code{pmslt_disease_epi.csv}, the canonical PMSLT-ready disease
+epidemiology input. It uses exact integer \code{age}, not age bands. Raw values
+belong in \code{05_disease_epidemiology_raw.csv}, teaching/local DisMod
+diagnostics belong in \code{mock_dismod_output_*.csv}, and PMSLT disease modules
+consume this PMSLT-ready file.
 }

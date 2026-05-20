@@ -104,7 +104,10 @@ generate_mock_pmslt_inputs <- function(output_dir = "mock_inputs_raw",
 #'
 #' This function creates deterministic, teaching-only outputs that look like a
 #' post-DisMod correction file. It uses simple illness-death consistency
-#' equations and age smoothing. It is not a replacement for DisMod-MR.
+#' equations and age smoothing. It is not a replacement for DisMod-MR. When
+#' `continuous_age = TRUE`, it also writes the canonical single-year
+#' PMSLT-ready disease input `pmslt_disease_epi.csv` for downstream disease
+#' modules.
 #'
 #' @param input_dir Raw input directory created by [generate_mock_pmslt_inputs()]
 #'   or [draft_input_templates()].
@@ -190,12 +193,17 @@ mock_dismod_output <- function(input_dir = "mock_inputs_raw",
 
 #' Prepare PMSLT-ready disease epidemiology inputs
 #'
-#' Converts post-DisMod PMSLT age-grid predictions into a wide, time-expanded
+#' Converts post-DisMod single-year predictions into a wide, time-expanded
 #' disease epidemiology file that can be passed to a PMSLT disease lifetable.
+#' This writes `pmslt_disease_epi.csv`, the canonical PMSLT-ready disease
+#' epidemiology input. It uses exact integer `age`, not age bands. Raw values
+#' belong in `05_disease_epidemiology_raw.csv`, teaching/local DisMod
+#' diagnostics belong in `mock_dismod_output_*.csv`, and PMSLT disease modules
+#' consume this PMSLT-ready file.
 #'
 #' @param input_dir Raw input directory containing `05_disease_epidemiology_raw.csv`
 #'   and optionally `07_bau_trends.csv` and `08_risk_factor_prevalence.csv`.
-#' @param dismod_output_dir Directory containing `mock_dismod_output_pmslt_ages.csv`.
+#' @param dismod_output_dir Directory containing `mock_dismod_output_continuous.csv`.
 #' @param output_file CSV path for PMSLT-ready disease inputs.
 #' @param horizon Optional simulation horizon. If `NULL`, inferred from
 #'   `08_risk_factor_prevalence.csv` when available; otherwise 0.
@@ -208,35 +216,38 @@ prepare_pmslt_disease_inputs <- function(input_dir = "mock_inputs_raw",
                                          output_file = file.path(dismod_output_dir, "pmslt_disease_epi.csv"),
                                          horizon = NULL,
                                          overwrite = TRUE) {
-  pmslt_age_path <- file.path(dismod_output_dir, "mock_dismod_output_pmslt_ages.csv")
-  if (!file.exists(pmslt_age_path)) {
-    predict_dismod_to_age_grid(dismod_output_dir = dismod_output_dir, overwrite = overwrite)
+  continuous_path <- file.path(dismod_output_dir, "mock_dismod_output_continuous.csv")
+  if (!file.exists(continuous_path)) {
+    smooth_dismod_age_curve(dismod_output_dir = dismod_output_dir, overwrite = overwrite)
   }
   if (file.exists(output_file) && !isTRUE(overwrite)) {
     stop("File already exists: ", output_file, ". Use `overwrite = TRUE` to replace it.", call. = FALSE)
   }
 
-  pmslt_long <- utils::read.csv(pmslt_age_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  pmslt_long <- utils::read.csv(continuous_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
   require_columns(
     pmslt_long,
-    c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "parameter", "dismod_age_grid_mean"),
-    "mock_dismod_output_pmslt_ages.csv"
+    c("age", "sex", "stratum", "disease", "parameter", "dismod_smoothed"),
+    "mock_dismod_output_continuous.csv"
   )
   base <- stats::reshape(
-    pmslt_long[c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "parameter", "dismod_age_grid_mean")],
-    idvar = c("age_start", "age_end", "age_label", "sex", "stratum", "disease"),
+    pmslt_long[c("age", "sex", "stratum", "disease", "parameter", "dismod_smoothed")],
+    idvar = c("age", "sex", "stratum", "disease"),
     timevar = "parameter",
     direction = "wide"
   )
-  names(base) <- sub("dismod_age_grid_mean[.]", "", names(base))
+  names(base) <- sub("dismod_smoothed[.]", "", names(base))
   row.names(base) <- NULL
 
   raw_path <- file.path(input_dir, "05_disease_epidemiology_raw.csv")
   if (file.exists(raw_path)) {
     raw <- utils::read.csv(raw_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
     if ("disability_weight" %in% names(raw)) {
-      raw_dw <- unique(raw[c("age_start", "age_end", "age_label", "sex", "stratum", "disease", "disability_weight")])
-      base <- merge(base, raw_dw, by = c("age_start", "age_end", "age_label", "sex", "stratum", "disease"), all.x = TRUE, sort = FALSE)
+      raw_dw <- expand_age_banded_values(
+        unique(raw[c("age_start", "age_end", "sex", "stratum", "disease", "disability_weight")]),
+        value_cols = "disability_weight"
+      )
+      base <- merge(base, raw_dw, by = c("age", "sex", "stratum", "disease"), all.x = TRUE, sort = FALSE)
     }
   }
   if (!"disability_weight" %in% names(base)) {
@@ -266,18 +277,13 @@ prepare_pmslt_disease_inputs <- function(input_dir = "mock_inputs_raw",
   out$case_fatality_BAU <- out$case_fatality_rate * exp(out$cfr_apc * out$time_step)
   out$excess_mortality_BAU <- out$excess_mortality_rate * exp(out$cfr_apc * out$time_step)
   out$prevalence_BAU_reference <- out$prevalence * exp(out$prevalence_apc * out$time_step)
-  out$input_source <- "post-DisMod PMSLT age-grid prediction"
+  out$input_source <- "post-DisMod single-year age prediction"
 
-  ordered_cols <- c(
-    "age_start", "age_end", "age_label", "sex", "stratum", "disease", "time_step",
-    "incidence_BAU", "prevalence_initial", "remission_rate",
-    "excess_mortality_BAU", "case_fatality_BAU", "disability_weight",
-    "prevalence_BAU_reference", "incidence_apc", "cfr_apc", "prevalence_apc",
-    "input_source"
-  )
+  ordered_cols <- pmslt_disease_epi_schema()$columns$column
   out <- out[ordered_cols]
-  out <- out[order(out$disease, out$sex, out$stratum, out$age_start, out$time_step), ]
+  out <- out[order(out$disease, out$sex, out$stratum, out$age, out$time_step), ]
   row.names(out) <- NULL
+  validate_pmslt_disease_inputs(out)
 
   utils::write.csv(out, output_file, row.names = FALSE, na = "")
   invisible(out)
@@ -448,6 +454,25 @@ predict_dismod_to_age_grid <- function(dismod_output_dir,
   out <- do.call(rbind, rows)
   utils::write.csv(out, output_file, row.names = FALSE, na = "")
   invisible(out)
+}
+
+expand_age_banded_values <- function(data, value_cols) {
+  require_columns(data, c("age_start", "age_end", value_cols), "age-banded data")
+  rows <- lapply(seq_len(nrow(data)), function(i) {
+    row <- data[i, , drop = FALSE]
+    age_start <- as.numeric(row$age_start)
+    age_end <- as.numeric(row$age_end)
+    if (is.infinite(age_end)) {
+      age_end <- age_start
+    }
+    ages <- seq.int(age_start, age_end)
+    expanded <- row[rep(1, length(ages)), setdiff(names(row), c("age_start", "age_end", "age_label")), drop = FALSE]
+    expanded$age <- ages
+    expanded[c("age", setdiff(names(expanded), "age"))]
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out
 }
 
 #' Plot raw points, continuous DisMod curve, and PMSLT age predictions

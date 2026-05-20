@@ -69,3 +69,414 @@ Related artifacts updated:
 - `README.md`
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/package_architecture.md`
+
+## 2026-05-17: Central Raw Input Schemas Added
+
+Reason:
+
+- Template columns, guide descriptions, requirement levels, and future
+  validation rules were split across template and guide code.
+- Phase 2 needs a single schema source before adding comprehensive raw input
+  validation.
+
+Change:
+
+- Added `R/schema.R` with one central schema entry per raw CSV template.
+- Each schema entry records the file name, columns, requirement level,
+  beginner-facing description, validation type, and allowed values where
+  relevant.
+- Updated `README_inputs_raw.md` generation and `00_column_dictionary.csv`
+  generation to use the central schema metadata.
+- Added tests that compare generated template columns with schema columns and
+  check validation metadata in both the column dictionary and markdown guide.
+
+Effect:
+
+- Existing template filenames and ordinary data columns are unchanged.
+- `00_column_dictionary.csv` now includes `validation_type` and
+  `allowed_values`, which prepares the package for `validate_raw_inputs()`.
+
+Validation:
+
+- `devtools::test()` passed with 110 tests.
+- `R CMD check pmslttools_0.0.0.9009.tar.gz --no-manual --no-build-vignettes`
+  passed with status OK.
+
+Related artifacts updated:
+
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+
+## 2026-05-18: Raw Input Validation Layer Added
+
+Reason:
+
+- The package could generate schema-driven raw templates, but users did not yet
+  have one standard reusable validation step before DisMod processing.
+- Raw validation needs to be non-destructive and beginner-friendly: it should
+  accumulate issues and explain how to fix them instead of stopping at the
+  first failed check.
+
+Change:
+
+- Added exported `validate_raw_inputs(input_dir, spec = NULL)`.
+- Added internal issue-table helpers:
+  `empty_validation_issues()`, `new_validation_issue()`,
+  `append_validation_issue()`, and `append_validation_issues()`.
+- Added S3 class `pmslt_validation_issues` and
+  `print.pmslt_validation_issues()`.
+- The validator checks:
+  - missing expected raw CSV files;
+  - unexpected duplicate CSV copies;
+  - missing and duplicated columns;
+  - blank required values;
+  - numeric, integer, and calendar-year type problems;
+  - schema-defined allowed values;
+  - `pmslt_spec`-derived generated values such as sex, stratum, disease,
+    intervention, risk factor, risk category, age bands, and time steps;
+  - non-negative rates and counts;
+  - proportions bounded by 0 and 1;
+  - positive relative risks and rate ratios;
+  - `age_start <= age_end`;
+  - simple `lower_95 <= mean_value <= upper_95` consistency.
+
+Effect:
+
+- Raw template validation now returns a stable, flat issue table with columns
+  `file`, `row`, `column`, `severity`, `message`, and `suggested_fix`.
+- The raw validation layer remains separate from DisMod validation and
+  post-DisMod PMSLT disease input validation.
+
+Validation:
+
+- Added `tests/testthat/test-raw-validation.R`.
+- `devtools::test()` passed with 138 tests.
+
+Related artifacts updated:
+
+- `NAMESPACE`
+- `man/validate_raw_inputs.Rd`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/package_architecture.md`
+
+## 2026-05-18: Canonical PMSLT Disease Epidemiology Schema Formalised
+
+Reason:
+
+- Downstream PMSLT disease modules need a stable post-DisMod disease input
+  contract before additional engine modules are built.
+- The package needed clearer separation between raw disease epidemiology
+  templates, teaching/local DisMod-lite intermediates, and the PMSLT-ready
+  disease epidemiology file.
+
+Change:
+
+- Added `pmslt_ready_input_schemas()` and `pmslt_disease_epi_schema()` in
+  `R/schema.R`.
+- Kept PMSLT-ready schema metadata separate from raw template schemas returned
+  by `pmslt_input_schemas()`.
+- Formalised `pmslt_disease_epi.csv` required columns:
+  `age_start`, `age_end`, `age_label`, `sex`, `stratum`, `disease`,
+  `time_step`, `incidence_BAU`, `prevalence_initial`, `remission_rate`,
+  `excess_mortality_BAU`, `case_fatality_BAU`, and `disability_weight`.
+- Documented optional trend/provenance columns currently written by
+  `prepare_pmslt_disease_inputs()`:
+  `prevalence_BAU_reference`, `incidence_apc`, `cfr_apc`,
+  `prevalence_apc`, and `input_source`.
+- Updated `prepare_pmslt_disease_inputs()` to order columns from the schema and
+  validate before writing.
+- Updated `validate_pmslt_disease_inputs()` to derive required columns from the
+  schema and to reject non-numeric schema fields, negative rates, prevalence
+  outside 0 to 1, invalid disability weights, and non-integer time steps.
+- Updated roxygen text to clarify:
+  - raw disease epidemiology belongs in `05_disease_epidemiology_raw.csv`;
+  - raw template files are validated by `validate_raw_inputs()`;
+  - DisMod-lite output files are teaching/local diagnostic intermediates;
+  - downstream PMSLT disease modules consume `pmslt_disease_epi.csv`.
+
+Effect:
+
+- Existing public column names are preserved.
+- `time_step` remains the canonical time column for PMSLT-ready disease inputs;
+  no new `year` column was introduced.
+- `mock_dismod_output()` and `prepare_pmslt_disease_inputs()` align with the
+  canonical schema.
+
+Validation:
+
+- Added `tests/testthat/test-pmslt-disease-schema.R`.
+- Local schema tests passed before full package validation.
+
+Related artifacts updated:
+
+- `R/schema.R`
+- `R/mock-dismod.R`
+- `R/pmslt-workflow.R`
+- `inst/artifacts/package_architecture.md`
+
+## 2026-05-20: Canonical Disease Input Moved to Single-Year Age
+
+Reason:
+
+- Future PMSLT lifetable modules should consume one stable disease input
+  contract before main engine expansion resumes.
+- Raw epidemiological evidence may be age-banded, but the internal
+  PMSLT-ready disease file should not use age bands as simulation state.
+
+Change:
+
+- Updated `pmslt_disease_epi_schema()` so the required canonical age field is
+  exact integer `age`, replacing `age_start`, `age_end`, and `age_label` in
+  `pmslt_disease_epi.csv`.
+- Kept raw template schemas age-banded where appropriate, including
+  `05_disease_epidemiology_raw.csv` and `06_dismod_input_skeleton.csv`.
+- Updated `prepare_pmslt_disease_inputs()` to write single-year rows from
+  `mock_dismod_output_continuous.csv`; raw age-banded disability weights are
+  expanded onto exact ages before merging.
+- Updated `validate_pmslt_disease_inputs()` to reject missing or non-integer
+  ages, reject age-band columns in PMSLT-ready inputs, check required columns,
+  enforce non-negative rates, and keep prevalence/disability weights between
+  0 and 1.
+- Updated DisMod-lite diagnostic solving to expand age-banded observations to
+  exact one-year rows while keeping it clearly documented as a teaching/local
+  diagnostic helper.
+- Kept `age_bands()` in the user-facing specification layer; age bands remain
+  for input convenience and reporting/diagnostics, not canonical disease
+  simulation state.
+
+Validation:
+
+- Added and updated tests covering single-year canonical schema, writer output
+  uniqueness by exact age, validator acceptance/rejection paths, mock DisMod
+  schema validity, DisMod-lite one-year expansion, and unchanged raw disease
+  template age-band schemas.
+- `devtools::test()` passed locally with 176 tests before roxygen regeneration.
+
+Boundary:
+
+- Main PMSLT lifetable expansion was not started in this slice.
+
+Related artifacts updated:
+
+- `R/schema.R`
+- `R/mock-dismod.R`
+- `R/dismod-lite.R`
+- `R/pmslt-workflow.R`
+- `tests/testthat/test-pmslt-disease-schema.R`
+- `tests/testthat/test-dismod-lite.R`
+- `tests/testthat/test-mock-dismod.R`
+- `tests/testthat/test-pmslt-workflow.R`
+- `tests/testthat/test-templates.R`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+
+## 2026-05-20: Single-Year Disease Input Contract Audit
+
+Reason:
+
+- The single-year `pmslt_disease_epi.csv` contract needed a cleanup pass before
+  any main all-cause lifetable work starts.
+
+Audit result:
+
+- Stale PMSLT-ready age-band assumptions were reviewed across `R/`, `tests/`,
+  `man/`, `README.md`, and package artifacts.
+- Remaining `age_start`, `age_end`, `age_label`, and age-band references are
+  valid where they describe raw input templates, `pmslt_spec()` age bands,
+  DisMod-lite diagnostics, plotting/reporting summaries, or explicit validator
+  rejection of age-banded PMSLT-ready inputs.
+- Public documentation now states that raw epidemiology inputs may be
+  age-banded, DisMod-lite/mock DisMod disaggregate to single-year age,
+  `pmslt_disease_epi.csv` is single-year, future PMSLT engine modules should
+  use exact integer age internally, and output summaries may later aggregate
+  ages for reporting.
+
+Change:
+
+- Reordered `validate_pmslt_disease_inputs()` so age-banded PMSLT-ready files
+  receive the beginner-facing age-band error before the generic missing
+  required-column check.
+- Added tests that scan package examples/documentation for PMSLT-ready disease
+  examples using age-band columns.
+- Added a focused intervention workflow test showing exact-age disease inputs
+  can be combined with age-banded intervention input rows where expansion is
+  intentional.
+
+Boundary:
+
+- Main all-cause lifetable, disease costs, and PSA were not started.
+
+## 2026-05-20: First Single-Year BAU All-Cause Lifetable Slice
+
+Reason:
+
+- The single-year disease input contract is stable enough to start the main
+  PMSLT engine, but the first implementation should stay deterministic and
+  all-cause only.
+
+Change:
+
+- Added exported `initialize_pmslt_lifetable()` in `R/main-lifetable.R`.
+- The function accepts data frames or CSV paths for population, all-cause
+  mortality, and optional all-cause morbidity.
+- Required engine columns are exact integer `age`, `sex`, `stratum`,
+  `population`, and `mortality_rate`; optional morbidity supplies
+  `morbidity_rate`.
+- Template-style aliases are accepted for beginner workflow continuity:
+  `initial_population`, `acmr_BAU`, and `pYLD_BAU`.
+- The function validates required columns, exact single-year ages,
+  non-negative population, mortality rates between 0 and 1, non-negative
+  morbidity rates, duplicate keys, and complete joins.
+- Output is a plain data frame with class `pmslt_lifetable` and columns for
+  `time_step`, `deaths`, `alive_end`, `person_years`, `morbidity_rate`, and
+  `yld_rate`.
+
+Boundary:
+
+- This slice runs one BAU time step only.
+- It does not age the population, integrate disease deltas, alter
+  `run_pmslt_interventions()`, add costs, or run PSA.
+
+Validation:
+
+- Added tests covering valid one-step formulas, data frame and CSV path inputs,
+  missing required columns, non-integer age rejection, negative population
+  rejection, mortality bounds, incomplete mortality joins, optional morbidity
+  joins, and incomplete morbidity joins.
+- `devtools::document()` completed and generated
+  `man/initialize_pmslt_lifetable.Rd` plus the NAMESPACE export.
+- `devtools::test()` passed with 203 tests.
+- `rcmdcheck` was not available in the active R session, so
+  `rcmdcheck::rcmdcheck()` was not run.
+
+## 2026-05-20: Multi-Cycle BAU All-Cause Lifetable Ageing Slice
+
+Reason:
+
+- The one-step BAU all-cause lifetable needed transparent yearly population
+  ageing before disease deltas or intervention effects are integrated.
+
+Change:
+
+- Added exported `run_pmslt_lifetable_bau()` in `R/main-lifetable.R`.
+- Kept `initialize_pmslt_lifetable()` as the one-step initializer.
+- The BAU runner accepts data frames or CSV paths for population, mortality,
+  and optional morbidity.
+- `horizon` is resolved from the explicit argument, then `spec$horizon`, then
+  default `1`.
+- The function validates positive integer horizon, required columns,
+  single-year integer age, consecutive ages within sex/stratum, non-negative
+  population, mortality rates between 0 and 1, non-negative morbidity rates,
+  duplicate keys, and complete rate joins for every simulated cycle.
+- Static mortality and morbidity inputs are reused every cycle when no
+  `time_step` column exists.
+- Time-varying mortality and morbidity inputs are matched by `time_step` when
+  that column exists.
+- Survivors age forward by one year each cycle. The minimum starting age gets
+  no new entrants. The maximum age is open-ended: survivors already at the
+  maximum age stay there and survivors from the previous age also age into it.
+- Added `yld = person_years * morbidity_rate` while preserving `yld_rate`.
+
+Boundary:
+
+- No disease-specific deltas, PIFs, direct intervention effects, costs, PSA,
+  equity disaggregation, births, migration, entrants, or new cohorts were
+  added.
+- The canonical `pmslt_disease_epi.csv` schema was not changed.
+
+Validation:
+
+- Added tests covering `horizon = 1` equivalence with the initializer,
+  multi-cycle ageing, open-ended maximum-age retention, static rate reuse,
+  time-varying mortality matching, morbidity matching and `yld`, invalid
+  horizon rejection, incomplete time-varying joins, no-new-entrant behaviour,
+  and consecutive-age validation.
+- `devtools::document()` completed and generated `run_pmslt_lifetable_bau.Rd`
+  plus the NAMESPACE export.
+- `devtools::test()` passed with 233 tests.
+- `rcmdcheck` was not available in the active R session, so
+  `rcmdcheck::rcmdcheck()` was not run.
+
+## 2026-05-20: Disease Delta Attachment for Single-Year BAU Lifetable
+
+Reason:
+
+- The BAU all-cause lifetable can now initialize and age deterministically, so
+  the next narrow step is to attach disease-attributable quantities without
+  changing all-cause death flow or introducing intervention logic.
+
+Change:
+
+- Added exported `integrate_disease_deltas()` in `R/main-lifetable.R`.
+- The helper accepts a `run_pmslt_lifetable_bau()` output plus a data frame or
+  CSV path for canonical `pmslt_disease_epi.csv`.
+- Disease inputs are validated with `validate_pmslt_disease_inputs()` and keep
+  the exact integer `age` contract.
+- Joins are validated by `time_step`, `age`, `sex`, and `stratum`; incomplete
+  disease rows for lifetable rows are rejected with a clear error.
+- The helper computes:
+  `disease_cases = person_years * incidence_BAU`,
+  `disease_deaths = person_years * prevalence_initial * case_fatality_BAU`,
+  and `disease_yld = person_years * prevalence_initial * disability_weight`.
+- Multiple diseases are aggregated into `total_disease_cases`,
+  `total_disease_deaths`, and `total_disease_yld` beside each all-cause
+  lifetable row.
+- Disease-specific long output is preserved in the `disease_deltas` attribute.
+
+Boundary:
+
+- Disease deaths are not subtracted from all-cause deaths yet.
+- No intervention effects, PIFs, direct effects, costs, PSA, or equity logic
+  were added.
+- The `pmslt_disease_epi.csv` schema was not changed.
+
+Validation:
+
+- Added tests for single-disease joins, deterministic cases/deaths/YLD
+  formulas, multiple-disease aggregation, incomplete join rejection, and
+  invalid disease-input rejection through the existing validator.
+- `devtools::document()` completed and generated
+  `man/integrate_disease_deltas.Rd` plus the NAMESPACE export.
+- `devtools::test()` passed with 249 tests.
+- `rcmdcheck` was not installed in the active R session, so
+  `rcmdcheck::rcmdcheck()` was not run.
+
+## 2026-05-20: Beginner Result Summary Helpers
+
+Reason:
+
+- Before intervention integration, users need a simple way to inspect BAU
+  all-cause lifetable outputs and attached disease-delta outputs.
+
+Change:
+
+- Added exported `summarise_pmslt_results()` in `R/main-lifetable.R`.
+- The helper accepts output from `run_pmslt_lifetable_bau()` and
+  `integrate_disease_deltas()`.
+- `by = "overall"` returns one ungrouped summary row.
+- Summaries can group by exact `time_step`, `sex`, `stratum`, and `age`.
+- When `by` includes `disease`, the helper uses
+  `attr(results, "disease_deltas")` and returns disease-specific metrics.
+- All-cause summaries include `population`, `deaths`, `person_years`, and
+  `yld` when present.
+- Integrated summaries include `total_disease_cases`,
+  `total_disease_deaths`, and `total_disease_yld`.
+
+Boundary:
+
+- Exact single-year age is preserved; no age-band reporting was added.
+- No intervention effects, costs, PSA, equity logic, lifetable formula changes,
+  or schema changes were added.
+
+Validation:
+
+- Added tests for overall BAU summaries, grouping by `time_step`, `sex` and
+  `stratum`, exact `age`, integrated disease total summaries,
+  disease-specific summaries from `disease_deltas`, missing disease-attribute
+  errors, and invalid grouping errors.
+- `devtools::document()` completed and generated
+  `man/summarise_pmslt_results.Rd` plus the NAMESPACE export.
+- `devtools::test()` passed with 275 tests.
+- `rcmdcheck` was not installed in the active R session, so
+  `rcmdcheck::rcmdcheck()` was not run.

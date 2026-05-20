@@ -17,13 +17,23 @@ This first scaffold includes:
 - `validate_spec()` and `diagnose_missing_parameters()` to explain modelling
   requirements before data collection.
 - `solve_dismod_lite()` to read an `input_raw` directory, disaggregate coarse
-  disease age groups to the template age grid, and fill missing disease
+  disease age groups to exact single-year ages, and fill missing disease
   parameters where simple illness-death consistency equations are identifiable.
   It can optionally propagate uncertainty from `lower_95` and `upper_95`
   columns by Monte Carlo sampling.
+- `initialize_pmslt_lifetable()` to create a one-step, single-year,
+  business-as-usual all-cause lifetable from population, mortality, and
+  optional morbidity inputs.
+- `run_pmslt_lifetable_bau()` to run the deterministic BAU all-cause lifetable
+  for multiple yearly cycles with single-year population ageing.
+- `integrate_disease_deltas()` to attach deterministic disease-attributable
+  cases, deaths, and YLDs beside BAU all-cause lifetable rows.
+- `summarise_pmslt_results()` to inspect BAU all-cause and disease-delta
+  outputs overall or by exact `time_step`, `age`, `sex`, `stratum`, and
+  `disease`.
 
-Simulation engine functions will be migrated from the existing PMSLT template in
-later modules.
+Full simulation engine functions will be migrated from the existing PMSLT
+template in later modules.
 
 ## Example
 
@@ -65,11 +75,12 @@ plot_dismod_age_curve("mock_inputs_raw/mock_dismod_output")
 
 This creates mock raw inputs, a teaching-only mock DisMod output, and a PNG plot
 comparing raw epidemiological parameters with corrected values. It also creates
-single-year continuous-age predictions and PMSLT age-grid predictions:
+single-year continuous-age predictions, PMSLT age-band diagnostic summaries,
+and the canonical single-year disease input:
 
 - `mock_dismod_output_continuous.csv`
-- `mock_dismod_output_pmslt_ages.csv`
-- `pmslt_disease_epi.csv`
+- `mock_dismod_output_pmslt_ages.csv` for diagnostic/reporting summaries
+- `pmslt_disease_epi.csv` with exact integer `age`
 - `dismod_continuous_age_curve.png`
 
 It is for learning the workflow shape only, not a substitute for real DisMod-MR.
@@ -87,8 +98,55 @@ disease_deltas <- run_pmslt_disease_lifetable(disease_epi)
 ```
 
 The package treats this post-DisMod file as the canonical disease input for
-subsequent PMSLT modules. Raw disease inputs are retained as an audit trail, not
-as the direct model input.
+subsequent PMSLT modules. Raw disease inputs may be age-banded and are retained
+as an audit trail, not as the direct model input. `pmslt_disease_epi.csv` is
+single-year: it uses an exact integer `age` column and does not use
+`age_start`, `age_end`, or `age_label`. Future PMSLT engine modules should use
+exact integer age internally; age groups can be rebuilt later for output
+reporting summaries.
+
+## Main all-cause lifetable starter
+
+```r
+population <- data.frame(
+  age = c(40L, 41L),
+  sex = "female",
+  stratum = "total",
+  population = c(1000, 900)
+)
+
+mortality <- data.frame(
+  age = c(40L, 41L),
+  sex = "female",
+  stratum = "total",
+  mortality_rate = c(0.01, 0.02)
+)
+
+lifetable <- initialize_pmslt_lifetable(population, mortality)
+bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1)
+disease_attached <- integrate_disease_deltas(bau, disease_epi)
+summarise_pmslt_results(disease_attached)
+summarise_pmslt_results(disease_attached, by = c("disease", "age"))
+```
+
+`initialize_pmslt_lifetable()` runs one deterministic BAU time step.
+`run_pmslt_lifetable_bau()` runs multiple yearly BAU cycles. If mortality or
+morbidity inputs include `time_step`, rates are matched by `time_step`;
+otherwise baseline rates are reused every cycle. Survivors age forward by one
+year each cycle. The minimum starting age receives no new entrants, and the
+maximum age is treated as open-ended for now.
+`integrate_disease_deltas()` joins exact-age `pmslt_disease_epi.csv` rows to
+BAU lifetable rows and attaches `total_disease_cases`,
+`total_disease_deaths`, and `total_disease_yld`. Disease-specific long rows are
+kept in the `disease_deltas` attribute.
+`summarise_pmslt_results()` returns plain data-frame summaries for all-cause
+lifetable metrics and, when disease deltas are attached, disease-attributable
+metrics. Disease-specific summaries use the `disease_deltas` attribute.
+
+These all-cause lifetable functions do not apply interventions, PIFs, direct
+effects, costs, PSA, births, migration, or entrants yet. Disease-attributable
+deaths are attached beside all-cause deaths; they are not subtracted from the
+all-cause lifetable in this slice.
 
 ## Intervention workflow
 

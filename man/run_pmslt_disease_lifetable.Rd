@@ -14,13 +14,15 @@ run_pmslt_disease_lifetable(
 \item{disease_epi}{Data frame from \code{read_pmslt_disease_inputs()} or path to
 \code{pmslt_disease_epi.csv}.}
 
-\item{pif_data}{Optional data frame with \code{age_start}, \code{sex}, \code{stratum},
+\item{pif_data}{Optional data frame with \code{age}, \code{sex}, \code{stratum},
 \code{disease}, \code{time_step}, and \code{pif}. If omitted, intervention equals BAU.}
 
 \item{direct_effect_data}{Optional data frame with direct disease effects.
-Expected columns are \code{age_start}, \code{sex}, \code{stratum}, \code{disease},
-\code{incidence_rr}, \code{cfr_rr}, \code{morbidity_rr}, and \code{coverage}. If an
-\code{intervention} column is present, use \code{intervention} to select one arm.}
+Expected columns are \code{age}, \code{sex}, \code{stratum}, \code{disease},
+\code{incidence_rr}, \code{cfr_rr}, \code{morbidity_rr}, and \code{coverage}.
+Age-banded direct-effect rows from raw templates are expanded to exact ages
+before merging. If an \code{intervention} column is present, use \code{intervention}
+to select one arm.}
 
 \item{intervention}{Optional intervention arm name used to filter PIF and
 direct-effect data when those inputs contain multiple scenarios.}

@@ -131,6 +131,8 @@ Status: high priority
 
 ### 2.1 Create central schema definitions
 
+Status: completed 2026-05-17.
+
 Problem:
 
 - Template columns, guide descriptions, requirements, and validators are
@@ -153,7 +155,17 @@ Acceptance criteria:
 - `draft_input_templates()`, `00_column_dictionary.csv`, and
   `README_inputs_raw.md` draw from the same schema source.
 
+Implementation note:
+
+- Added `R/schema.R` with central schema definitions for each raw CSV template.
+- `00_column_dictionary.csv` now includes `validation_type` and
+  `allowed_values` columns from the same schema source.
+- `README_inputs_raw.md` now prints requirement and validation metadata from
+  the central schema.
+
 ### 2.2 Add raw input validators
+
+Status: completed 2026-05-18.
 
 Problem:
 
@@ -174,7 +186,20 @@ Acceptance criteria:
 - A beginner can run one command after filling templates and get a clear issue
   list.
 
+Implementation note:
+
+- Added exported `validate_raw_inputs(input_dir, spec = NULL)`.
+- The validator uses central schema metadata plus optional `pmslt_spec`
+  information to check expected files, duplicate files, duplicated columns,
+  missing columns, required missing values, numeric types, allowed generated
+  values, non-negative rates, proportions bounded by 0 and 1, positive relative
+  risks/rate ratios, age-band ordering, and simple uncertainty bounds.
+- It returns all issues it can find instead of stopping early, except for
+  catastrophic unreadable directory inputs.
+
 ### 2.3 Add issue-list output format
+
+Status: completed 2026-05-18.
 
 Problem:
 
@@ -193,6 +218,17 @@ Todo:
 Acceptance criteria:
 
 - Validation output can be printed, saved to CSV, or used in a future Shiny app.
+
+Implementation note:
+
+- Added internal helpers `new_validation_issue()`,
+  `append_validation_issue()`, `append_validation_issues()`, and
+  `empty_validation_issues()`.
+- `validate_raw_inputs()` returns an S3 data frame with class
+  `pmslt_validation_issues` and stable columns:
+  `file`, `row`, `column`, `severity`, `message`, `suggested_fix`.
+- Added a `print.pmslt_validation_issues()` method with issue counts by
+  severity and a short preview.
 
 ## Phase 3: Improve DisMod Integration
 
@@ -219,6 +255,8 @@ Acceptance criteria:
 
 ### 3.2 Define canonical DisMod output contract
 
+Status: completed 2026-05-18.
+
 Problem:
 
 - Downstream modules need a stable post-DisMod format.
@@ -233,12 +271,40 @@ Acceptance criteria:
 
 - Every downstream disease module consumes the same schema.
 
-### 3.3 Improve continuous-age to PMSLT-age mapping
+Implementation note:
+
+- Added central PMSLT-ready schema metadata in `R/schema.R` via
+  `pmslt_ready_input_schemas()` and `pmslt_disease_epi_schema()`.
+- Kept PMSLT-ready schemas separate from raw input template schemas.
+- Formalised `pmslt_disease_epi.csv` as the canonical downstream disease
+  epidemiology input with required columns:
+  `age`, `sex`, `stratum`, `disease`, `time_step`, `incidence_BAU`,
+  `prevalence_initial`, `remission_rate`, `excess_mortality_BAU`,
+  `case_fatality_BAU`, `disability_weight`.
+- Refactored the canonical disease file to exact single-year age resolution:
+  raw disease files may remain age-banded, but `pmslt_disease_epi.csv` must
+  have one row per disease, sex, stratum, time step, and integer age.
+- `prepare_pmslt_disease_inputs()` now orders output columns from the canonical
+  schema, writes single-year rows from post-DisMod age smoothing, and validates
+  the prepared file before writing.
+- `validate_pmslt_disease_inputs()` now derives required columns from the
+  canonical schema and checks required columns, integer age, numeric fields,
+  non-negative rates, proportions between 0 and 1, and rejection of age-band
+  columns in PMSLT-ready disease inputs.
+- Added tests for schema existence, writer alignment, reader acceptance, and
+  validator rejection paths.
+- Audit follow-up confirmed that examples and downstream disease workflow tests
+  use exact-age `pmslt_disease_epi.csv`, while raw age-banded inputs remain
+  separate and may be expanded where intervention inputs intentionally cover
+  age bands.
+
+### 3.3 Improve continuous-age diagnostics and reporting
 
 Problem:
 
-- Current mapping supports `band_mean` and `midpoint`, but more guidance is
-  needed.
+- The canonical PMSLT-ready disease input is now single-year. Age-band mapping
+  remains useful for diagnostic summaries and output reporting, but should not
+  define internal simulation state.
 
 Todo:
 
@@ -249,6 +315,8 @@ Acceptance criteria:
 
 - Students understand when discrete age bands are acceptable and when
   continuous-age smoothing should be used.
+- Documentation clearly says age bands are for raw input convenience and
+  reporting, while `pmslt_disease_epi.csv` is single-year.
 
 ## Phase 4: Build Full PMSLT Model Modules
 
@@ -262,7 +330,7 @@ Source template reference:
 
 Todo:
 
-- Add `initialize_lifetable()`.
+- Add `initialize_pmslt_lifetable()`.
 - Use:
   - `01_population.csv`
   - `02_all_cause_mortality.csv`
@@ -274,6 +342,33 @@ Todo:
 Acceptance criteria:
 
 - BAU lifetable runs without disease interventions.
+
+Implementation note:
+
+- Added exported `initialize_pmslt_lifetable(population, mortality, morbidity = NULL, spec = NULL)`.
+- The first slice accepts data frames or CSV paths, requires exact integer
+  single-year `age`, and validates `age`, `sex`, `stratum`, `population`,
+  `mortality_rate`, and optional `morbidity_rate`.
+- It accepts template-style column aliases `initial_population`, `acmr_BAU`,
+  and `pYLD_BAU` while returning standard engine columns.
+- It runs one deterministic BAU time step only:
+  `deaths = population * mortality_rate`,
+  `alive_end = population - deaths`, and
+  `person_years = population - 0.5 * deaths`.
+- It does not yet use life expectancy, age the population, integrate disease
+  deltas, model interventions, add costs, or run PSA.
+- Added exported `run_pmslt_lifetable_bau(population, mortality, morbidity = NULL, horizon = NULL, spec = NULL)`.
+- The BAU runner extends the same all-cause calculations across yearly cycles
+  with exact consecutive single-year ages.
+- `horizon` is taken from the explicit argument, then `spec$horizon`, then
+  defaults to 1.
+- Static mortality and morbidity rates are reused each cycle when no
+  `time_step` column exists. Time-varying rates are matched by `time_step`
+  when present.
+- Survivors age forward one year per cycle. The minimum starting age receives
+  no new entrants, and the maximum age is treated as open-ended for now.
+- The BAU runner does not add births, migration, entrants, disease deltas,
+  intervention effects, costs, equity, or PSA.
 
 ### 4.2 Disease delta integration
 
@@ -293,7 +388,27 @@ Acceptance criteria:
 
 - `run_pmslt_interventions()` can feed a main PMSLT model.
 
+Implementation note:
+
+- Added exported `integrate_disease_deltas(lifetable, disease_epi)`.
+- This first slice attaches disease-attributable quantities beside
+  `run_pmslt_lifetable_bau()` output, rather than changing all-cause deaths.
+- Inputs use the canonical exact-age `pmslt_disease_epi.csv` contract and are
+  validated with `validate_pmslt_disease_inputs()`.
+- Joins are validated by `time_step`, `age`, `sex`, and `stratum`.
+- Deterministic formulas are:
+  `disease_cases = person_years * incidence_BAU`,
+  `disease_deaths = person_years * prevalence_initial * case_fatality_BAU`,
+  and `disease_yld = person_years * prevalence_initial * disability_weight`.
+- Multiple diseases are aggregated into `total_disease_cases`,
+  `total_disease_deaths`, and `total_disease_yld` on each lifetable row.
+- Disease-specific long output is preserved in the `disease_deltas` attribute.
+- No intervention effects, PIFs, direct effects, costs, PSA, or equity logic
+  were added.
+
 ### 4.3 Population ageing
+
+Status: completed for deterministic BAU all-cause lifetable slice.
 
 Todo:
 
@@ -305,6 +420,15 @@ Acceptance criteria:
 
 - Population flow through age bands is transparent and tested.
 
+Implementation note:
+
+- Population ageing is implemented for exact single-year ages in
+  `run_pmslt_lifetable_bau()`.
+- The implemented maximum-age rule is open-ended single-age retention:
+  survivors at the maximum age remain there and survivors from the previous age
+  also age into the maximum age.
+- No births, migration, entrants, or new cohorts are introduced.
+
 ### 4.4 Outcome summaries
 
 Source template reference:
@@ -313,16 +437,39 @@ Source template reference:
 
 Todo:
 
-- Add:
+- Add `summarise_pmslt_results()`.
+- Summarise BAU all-cause outputs overall and by exact `time_step`, `age`,
+  `sex`, and `stratum`.
+- Summarise attached disease totals when `integrate_disease_deltas()` has been
+  run.
+- Use `attr(results, "disease_deltas")` for disease-specific summaries when
+  `by` includes `disease`.
+- Later modules can add:
   - life years
   - HALYs/DALYs
   - deaths avoided
   - morbidity changes
+  - intervention contrasts
   - stratified differences
+  - age-band reporting
 
 Acceptance criteria:
 
-- Outputs can be summarised by intervention, disease, sex, stratum, and time.
+- BAU and disease-delta outputs can be summarised by exact age, disease, sex,
+  stratum, and time.
+- Intervention summaries remain future work.
+
+Implementation note:
+
+- Added exported `summarise_pmslt_results(results, by = ...)`.
+- `by = "overall"` returns one ungrouped summary row.
+- Non-disease summaries include `population`, `deaths`, `person_years`, and
+  `yld` when present.
+- Integrated disease summaries also include `total_disease_cases`,
+  `total_disease_deaths`, and `total_disease_yld`.
+- Disease-specific summaries require the `disease_deltas` attribute and return
+  `disease_cases`, `disease_deaths`, and `disease_yld`.
+- This slice keeps exact integer age only; no age-band reporting was added.
 
 ## Phase 5: Costs and PSA
 

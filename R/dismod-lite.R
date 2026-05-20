@@ -1,9 +1,10 @@
 #' Solve simple DisMod-style epidemiological consistency equations
 #'
-#' Reads a PMSLT `input_raw` directory, expands coarse disease age groups to the
-#' template age grid, and fills missing values where they can be identified from
-#' simple steady-state illness-death equations. This is intentionally a small
-#' deterministic helper, not a replacement for full DisMod-MR.
+#' Reads a PMSLT `input_raw` directory, expands coarse disease age groups to
+#' exact single-year ages, and fills missing values where they can be identified
+#' from simple steady-state illness-death equations. This is intentionally a
+#' small deterministic teaching/local diagnostic helper, not a replacement for
+#' full DisMod-MR.
 #'
 #' @param input_dir Directory created by [draft_input_templates()].
 #' @param output_dir Directory where solved CSV files should be written.
@@ -86,10 +87,30 @@ dismod_target_grid <- function(wide, long) {
   grid_cols <- c("age_start", "age_end", "age_label", "sex", "stratum", "disease")
   if (!is.null(long)) {
     require_columns(long, c(grid_cols, "parameter"), "06_dismod_input_skeleton.csv")
-    return(unique(long[grid_cols]))
+    return(dismod_single_year_grid(unique(long[grid_cols])))
   }
   require_columns(wide, grid_cols, "05_disease_epidemiology_raw.csv")
-  unique(wide[grid_cols])
+  dismod_single_year_grid(unique(wide[grid_cols]))
+}
+
+dismod_single_year_grid <- function(age_grid) {
+  rows <- lapply(seq_len(nrow(age_grid)), function(i) {
+    row <- age_grid[i, , drop = FALSE]
+    age_start <- as.numeric(row$age_start)
+    age_end <- as.numeric(row$age_end)
+    if (is.infinite(age_end)) {
+      age_end <- age_start
+    }
+    ages <- seq.int(age_start, age_end)
+    expanded <- row[rep(1, length(ages)), , drop = FALSE]
+    expanded$age_start <- ages
+    expanded$age_end <- ages
+    expanded$age_label <- as.character(ages)
+    row.names(expanded) <- NULL
+    expanded
+  })
+  out <- do.call(rbind, rows)
+  unique(out)
 }
 
 dismod_observations <- function(wide, long) {

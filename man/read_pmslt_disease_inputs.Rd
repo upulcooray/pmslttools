@@ -15,5 +15,7 @@ A data frame containing PMSLT-ready disease epidemiology inputs.
 \description{
 Reads the post-DisMod disease epidemiology file used by downstream PMSLT
 disease lifetable modules. This is the canonical disease input after DisMod
-processing, not the raw \code{05_disease_epidemiology_raw.csv} file.
+processing, not the raw \code{05_disease_epidemiology_raw.csv} file and not an
+intermediate DisMod-lite diagnostic output. It uses exact single-year integer
+\code{age}; age-banded inputs belong upstream or in reporting summaries.
 }
