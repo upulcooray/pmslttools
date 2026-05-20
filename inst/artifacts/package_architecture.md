@@ -32,7 +32,7 @@ spec <- pmslt_spec(
 )
 
 draft_input_templates(spec, output_dir = "inputs_raw")
-solve_dismod_lite("inputs_raw")
+dismod_slove("inputs_raw")
 
 disease_epi <- read_pmslt_disease_inputs(
   "inputs_raw/mock_dismod_output/pmslt_disease_epi.csv"
@@ -233,7 +233,7 @@ Files:
 
 Public functions:
 
-- `solve_dismod_lite()`
+- `dismod_slove()`
 - `mock_pmslt_spec()`
 - `generate_mock_pmslt_inputs()`
 - `mock_dismod_output()`
@@ -301,7 +301,7 @@ Important output files:
 
 Boundary:
 
-- `solve_dismod_lite()` and `mock_dismod_output()` are not replacements for
+- `dismod_slove()` and `mock_dismod_output()` are not replacements for
   real DisMod-MR. They exist to teach workflow shape and to support local
   package development until a real DisMod adapter is added.
 
@@ -528,7 +528,7 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 - `run_pmslt_lifetable_bau()`
 - `run_pmslt_interventions()`
 - `pmslt_spec()`
-- `solve_dismod_lite()`
+- `dismod_slove()`
 - `smooth_dismod_age_curve()`
 - `validate_pmslt_disease_inputs()`
 - `validate_spec()`

@@ -1,4 +1,4 @@
-test_that("solve_dismod_lite solves prevalence and disaggregates coarse ages", {
+test_that("dismod_slove solves prevalence and disaggregates coarse ages", {
   spec <- pmslt_spec(
     intervention = "Tax",
     mechanism = "risk_factor",
@@ -33,7 +33,7 @@ test_that("solve_dismod_lite solves prevalence and disaggregates coarse ages", {
   )
   utils::write.csv(raw, file.path(out, "05_disease_epidemiology_raw.csv"), row.names = FALSE, na = "")
 
-  result <- solve_dismod_lite(out)
+  result <- dismod_slove(out)
 
   solved <- result$solved_wide
   solved_20 <- solved[solved$age_start == 20 & solved$disease == "CHD", ]
@@ -50,7 +50,7 @@ test_that("solve_dismod_lite solves prevalence and disaggregates coarse ages", {
   expect_true(file.exists(file.path(out, "dismod_lite_results", "dismod_lite_solved_wide.csv")))
 })
 
-test_that("solve_dismod_lite prefers filled long input over raw input", {
+test_that("dismod_slove prefers filled long input over raw input", {
   spec <- pmslt_spec(
     intervention = "Tax",
     mechanism = "risk_factor",
@@ -78,13 +78,13 @@ test_that("solve_dismod_lite prefers filled long input over raw input", {
   long$mean_value[long$parameter == "incidence"] <- 0.04
   utils::write.csv(long, long_path, row.names = FALSE, na = "")
 
-  result <- solve_dismod_lite(out)
+  result <- dismod_slove(out)
 
   expect_true(all(result$solved_wide$incidence_rate == 0.04))
   expect_true(all(result$solved_wide$incidence_source == "disaggregated_constant"))
 })
 
-test_that("solve_dismod_lite propagates uncertainty when bounds are available", {
+test_that("dismod_slove propagates uncertainty when bounds are available", {
   spec <- pmslt_spec(
     intervention = "Tax",
     mechanism = "risk_factor",
@@ -113,7 +113,7 @@ test_that("solve_dismod_lite propagates uncertainty when bounds are available", 
   fill_param("excess_mortality", 0.03, 0.022, 0.041)
   utils::write.csv(long, long_path, row.names = FALSE, na = "")
 
-  result <- solve_dismod_lite(out, uncertainty = TRUE, draws = 1000, seed = 1)
+  result <- dismod_slove(out, uncertainty = TRUE, draws = 1000, seed = 1)
 
   solved <- result$solved_wide
   long_result <- result$solved_long[result$solved_long$parameter == "prevalence", ]

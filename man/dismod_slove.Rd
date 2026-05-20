@@ -1,8 +1,8 @@
-\name{solve_dismod_lite}
-\alias{solve_dismod_lite}
+\name{dismod_slove}
+\alias{dismod_slove}
 \title{Solve simple DisMod-style epidemiological consistency equations}
 \usage{
-solve_dismod_lite(
+dismod_slove(
   input_dir = "pmslt_inputs_raw",
   output_dir = file.path(input_dir, "dismod_lite_results"),
   overwrite = FALSE,

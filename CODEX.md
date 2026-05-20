@@ -60,7 +60,7 @@ The package should guide users through:
 - `draft_input_templates()`
 - `write_input_template_guide()`
 - `diagnose_missing_parameters()`
-- `solve_dismod_lite()`
+- `dismod_slove()`
 - `mock_pmslt_spec()`
 - `generate_mock_pmslt_inputs()`
 - `mock_dismod_output()`

@@ -442,6 +442,30 @@ Validation:
 - `rcmdcheck` was not installed in the active R session, so
   `rcmdcheck::rcmdcheck()` was not run.
 
+## 2026-05-20: Rename DisMod-lite Helper
+
+Reason:
+
+- The public teaching/local DisMod-lite helper needed to use the requested
+  beginner-facing function name.
+
+Change:
+
+- Renamed exported `solve_dismod_lite()` to `dismod_slove()`.
+- Updated package references in README, CODEX, architecture/todo artifacts,
+  tests, NAMESPACE, and the Rd help file.
+- The on-disk output folder and CSV names still use `dismod_lite` because they
+  describe the diagnostic output format rather than the R function name.
+
+Boundary:
+
+- No DisMod-lite equations, disease schema, lifetable logic, intervention
+  logic, costs, PSA, or equity logic were changed.
+
+Validation:
+
+- Validation commands for this rename are recorded below when run.
+
 ## 2026-05-20: Beginner Result Summary Helpers
 
 Reason:

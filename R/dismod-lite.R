@@ -19,13 +19,13 @@
 #' @return Invisibly returns a list containing solved wide results, solved long
 #'   results, and diagnostics.
 #' @export
-solve_dismod_lite <- function(input_dir = "pmslt_inputs_raw",
-                              output_dir = file.path(input_dir, "dismod_lite_results"),
-                              overwrite = FALSE,
-                              consistency_tolerance = 0.15,
-                              uncertainty = FALSE,
-                              draws = 2000,
-                              seed = NULL) {
+dismod_slove <- function(input_dir = "pmslt_inputs_raw",
+                         output_dir = file.path(input_dir, "dismod_lite_results"),
+                         overwrite = FALSE,
+                         consistency_tolerance = 0.15,
+                         uncertainty = FALSE,
+                         draws = 2000,
+                         seed = NULL) {
   if (!dir.exists(input_dir)) {
     stop("`input_dir` does not exist: ", input_dir, call. = FALSE)
   }

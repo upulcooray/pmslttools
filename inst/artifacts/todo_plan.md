@@ -20,7 +20,7 @@ intervention handling. The source template should be mined module by module.
 Migration status:
 
 - Pre-simulation coherence check: partly superseded by `diagnose_missing_parameters()`
-  and `solve_dismod_lite()`. Still useful for future raw validation messages.
+  and `dismod_slove()`. Still useful for future raw validation messages.
 - Module I main lifetable initialisation: not yet migrated. Needed for full
   population PMSLT.
 - Module II PIF calculation: migrated and improved as `calculate_pif_from_inputs()`.
@@ -238,12 +238,12 @@ Status: high priority
 
 Problem:
 
-- `solve_dismod_lite()` and `mock_dismod_output()` are teaching tools, not real
+- `dismod_slove()` and `mock_dismod_output()` are teaching tools, not real
   DisMod-MR integration.
 
 Todo:
 
-- Keep `solve_dismod_lite()` as a local teaching/diagnostic tool.
+- Keep `dismod_slove()` as a local teaching/diagnostic tool.
 - Add planned functions:
   - `prepare_dismod_mr_inputs()`
   - `read_dismod_mr_outputs()`
