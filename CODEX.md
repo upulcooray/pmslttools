@@ -68,6 +68,7 @@ The package should guide users through:
 - `draft_input_templates()`
 - `validate_raw_inputs()`
 - `summarise_raw_input_issues()`
+- `check_raw_input_readiness()`
 - `write_input_template_guide()`
 - `diagnose_missing_parameters()`
 - `dismod_slove()`

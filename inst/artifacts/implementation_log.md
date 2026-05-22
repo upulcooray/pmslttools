@@ -129,6 +129,10 @@ Change:
   `print.summarised_raw_input_issues()` so beginners can see whether they can
   proceed, how many errors and warnings remain, which files need review, and
   the recommended next step.
+- Added exported `check_raw_input_readiness(input_dir, spec = NULL)` with S3
+  print method `print.raw_input_readiness_check()` to run raw validation and
+  issue summarisation in one beginner-facing workflow step while preserving the
+  original issue table.
 - The validator checks:
   - missing expected raw CSV files;
   - unexpected duplicate CSV copies;

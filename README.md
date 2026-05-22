@@ -16,6 +16,8 @@ This first scaffold includes:
 - `draft_input_templates()` to generate beginner-friendly CSV templates.
 - `validate_raw_inputs()` to check completed raw CSV templates before
   DisMod-lite preparation.
+- `check_raw_input_readiness()` to validate and summarise raw input readiness
+  in one beginner-facing step.
 - `validate_spec()` and `diagnose_missing_parameters()` to explain modelling
   requirements before data collection.
 - `dismod_slove()` to read an `input_raw` directory, disaggregate coarse
@@ -60,8 +62,9 @@ spec <- pmslt_spec(
 )
 
 draft_input_templates(spec, output_dir = "inputs_raw")
-issues <- validate_raw_inputs("inputs_raw", spec)
-summarise_raw_input_issues(issues)
+readiness <- check_raw_input_readiness("inputs_raw", spec)
+readiness$can_proceed
+readiness$issues
 dismod_slove("inputs_raw")
 dismod_slove("inputs_raw", uncertainty = TRUE, draws = 2000, seed = 1)
 ```
@@ -71,10 +74,10 @@ output folder. The guide explains every file and every blank column that the
 student needs to fill before DisMod processing. The output also includes
 `00_column_dictionary.csv`, which marks columns as generated, required,
 conditional, or optional. After filling the templates, run
-`validate_raw_inputs()` to get a single issue table covering missing files,
-missing values, type problems, unexpected columns, duplicated rows, and
-specification mismatches. Then use `summarise_raw_input_issues()` for a compact
-can-proceed signal and file-level counts before moving on to DisMod-lite.
+`check_raw_input_readiness()` for a one-step can-proceed signal, next-step
+guidance, and access to the full issue table before moving on to DisMod-lite.
+For lower-level control, use `validate_raw_inputs()` to get the issue table and
+`summarise_raw_input_issues()` to summarise it.
 
 ## Mock DisMod demonstration
 

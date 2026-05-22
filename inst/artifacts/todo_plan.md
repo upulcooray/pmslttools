@@ -233,6 +233,9 @@ Implementation note:
 - Added exported `summarise_raw_input_issues()` with a compact can-proceed
   signal, error and warning counts, file-level counts, and beginner-facing
   next-step guidance.
+- Added exported `check_raw_input_readiness()` as the beginner-facing one-step
+  helper that returns the validation issue table, summary, `can_proceed`, and
+  `next_step` without duplicating validation rules.
 
 ## Phase 3: Improve DisMod Integration
 

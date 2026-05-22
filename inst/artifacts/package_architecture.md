@@ -173,6 +173,7 @@ Public functions:
 
 - `validate_raw_inputs()`
 - `summarise_raw_input_issues()`
+- `check_raw_input_readiness()`
 
 Responsibilities:
 
@@ -184,6 +185,8 @@ Responsibilities:
   `file`, `row`, `column`, `severity`, `message`, and `suggested_fix`.
 - Summarise validation issues into a compact can-proceed signal, next-step
   guidance, and file-level issue counts.
+- Provide a one-step readiness check that returns both the issue table and the
+  summary without duplicating validation rules.
 - Check file existence, duplicate files, required columns, unexpected columns,
   duplicated column names, missing required values, type coercion, duplicate
   identifying rows, allowed generated values when a `pmslt_spec` is supplied,

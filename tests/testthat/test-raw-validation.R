@@ -461,3 +461,86 @@ test_that("print.summarised_raw_input_issues produces compact output", {
   expect_output(print(summary), "Can proceed: no")
   expect_output(print(summary), "Files with issues")
 })
+
+test_that("check_raw_input_readiness returns a ready object for valid inputs", {
+  spec <- valid_direct_spec()
+  input_dir <- write_valid_raw_inputs(spec)
+
+  readiness <- check_raw_input_readiness(input_dir, spec)
+
+  expect_s3_class(readiness, "raw_input_readiness_check")
+  expect_named(readiness, c("issues", "summary", "can_proceed", "next_step"))
+  expect_true(readiness$can_proceed)
+  expect_equal(readiness$next_step, readiness$summary$next_step)
+  expect_validation_columns(readiness$issues)
+  expect_equal(nrow(readiness$issues), 0)
+})
+
+test_that("check_raw_input_readiness preserves invalid issue tables and summary counts", {
+  spec <- valid_direct_spec()
+  input_dir <- write_valid_raw_inputs(spec)
+  population <- read_raw_csv(input_dir, "01_population.csv")
+  population$initial_population[[1]] <- NA
+  write_raw_csv(input_dir, "01_population.csv", population)
+
+  readiness <- check_raw_input_readiness(input_dir, spec)
+  expected_issues <- validate_raw_inputs(input_dir, spec)
+  expected_summary <- summarise_raw_input_issues(expected_issues)
+
+  expect_false(readiness$can_proceed)
+  expect_identical(readiness$issues, expected_issues)
+  expect_equal(readiness$summary$issue_count, expected_summary$issue_count)
+  expect_equal(readiness$summary$error_count, expected_summary$error_count)
+  expect_equal(readiness$summary$warning_count, expected_summary$warning_count)
+  expect_equal(readiness$next_step, expected_summary$next_step)
+})
+
+test_that("check_raw_input_readiness handles invalid input_dir through issue tables", {
+  missing_dir <- file.path(tempdir(), "raw_inputs_that_do_not_exist")
+
+  readiness <- check_raw_input_readiness(missing_dir)
+
+  expect_s3_class(readiness, "raw_input_readiness_check")
+  expect_false(readiness$can_proceed)
+  expect_validation_columns(readiness$issues)
+  expect_equal(nrow(readiness$issues), 1)
+  expect_equal(readiness$issues$severity, "error")
+  expect_match(readiness$issues$message, "does not exist")
+})
+
+test_that("check_raw_input_readiness delegates without changing issue format", {
+  spec <- valid_direct_spec()
+  input_dir <- write_valid_raw_inputs(spec)
+  population <- read_raw_csv(input_dir, "01_population.csv")
+  population$extra_comment <- "extra"
+  write_raw_csv(input_dir, "01_population.csv", population)
+
+  readiness <- check_raw_input_readiness(input_dir, spec)
+  expected_issues <- validate_raw_inputs(input_dir, spec)
+  expected_summary <- summarise_raw_input_issues(expected_issues)
+
+  expect_identical(readiness$issues, expected_issues)
+  expect_equal(names(readiness$issues), names(expected_issues))
+  expect_equal(readiness$summary, expected_summary)
+})
+
+test_that("print.raw_input_readiness_check is compact for no issues, warnings, and errors", {
+  spec <- valid_direct_spec()
+  valid_dir <- write_valid_raw_inputs(spec)
+  valid_readiness <- check_raw_input_readiness(valid_dir, spec)
+  expect_output(print(valid_readiness), "Raw input readiness check")
+  expect_output(print(valid_readiness), "Can proceed: yes")
+
+  warning_dir <- write_valid_raw_inputs(spec)
+  warning_population <- read_raw_csv(warning_dir, "01_population.csv")
+  warning_population$extra_comment <- "extra"
+  write_raw_csv(warning_dir, "01_population.csv", warning_population)
+  warning_readiness <- check_raw_input_readiness(warning_dir, spec)
+  expect_output(print(warning_readiness), "Review the warnings")
+
+  error_dir <- write_valid_raw_inputs(spec)
+  unlink(file.path(error_dir, "01_population.csv"))
+  error_readiness <- check_raw_input_readiness(error_dir, spec)
+  expect_output(print(error_readiness), "Can proceed: no")
+  expect_output(print(error_readiness), "Inspect the \\$issues table")
+})

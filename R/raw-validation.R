@@ -318,6 +318,64 @@ print.summarised_raw_input_issues <- function(x, ...) {
   invisible(x)
 }
 
+#' Check whether raw input templates are ready for the next workflow step
+#'
+#' Runs [validate_raw_inputs()] and [summarise_raw_input_issues()] in one
+#' beginner-facing step. This helper does not add validation rules and does not
+#' modify any files.
+#'
+#' @param input_dir Directory containing raw input CSV files.
+#' @param spec Optional `pmslt_spec` object passed to [validate_raw_inputs()].
+#'
+#' @return A list with class `raw_input_readiness_check` containing `issues`,
+#'   `summary`, `can_proceed`, and `next_step`.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' readiness <- check_raw_input_readiness("inputs_raw", spec)
+#' readiness$can_proceed
+#' readiness$issues
+#' }
+check_raw_input_readiness <- function(input_dir, spec = NULL) {
+  issues <- validate_raw_inputs(input_dir, spec = spec)
+  summary <- summarise_raw_input_issues(issues)
+
+  out <- list(
+    issues = issues,
+    summary = summary,
+    can_proceed = summary$can_proceed,
+    next_step = summary$next_step
+  )
+  class(out) <- "raw_input_readiness_check"
+  out
+}
+
+#' @export
+print.raw_input_readiness_check <- function(x, ...) {
+  cat("Raw input readiness check\n")
+  cat("Can proceed: ", if (isTRUE(x$can_proceed)) "yes" else "no", "\n", sep = "")
+  cat(
+    "Issues found: ",
+    x$summary$issue_count,
+    " (errors: ",
+    x$summary$error_count,
+    ", warnings: ",
+    x$summary$warning_count,
+    ")\n",
+    sep = ""
+  )
+  cat("Next step: ", x$next_step, "\n", sep = "")
+
+  if (!isTRUE(x$can_proceed)) {
+    cat("Inspect the $issues table to see what to fix.\n")
+  } else if (x$summary$warning_count > 0) {
+    cat("Review the warnings in $issues before moving on.\n")
+  }
+
+  invisible(x)
+}
+
 expected_raw_template_names <- function(input_dir, spec, schemas) {
   if (!is.null(spec)) {
     return(names(build_input_templates(spec)))
