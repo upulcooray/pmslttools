@@ -504,3 +504,49 @@ Validation:
 - `devtools::test()` passed with 275 tests.
 - `rcmdcheck` was not installed in the active R session, so
   `rcmdcheck::rcmdcheck()` was not run.
+
+## 2026-05-22: Age-Band Result Summaries
+
+Reason:
+
+- The main lifetable engine now uses exact single-year ages, but beginner
+  reporting often needs familiar age bands such as `40-42` or `43-45`.
+- This should be an output aggregation layer only, not a change to the PMSLT
+  engine or disease-delta integration.
+
+Change:
+
+- Extended `summarise_pmslt_results()` to accept `by = "age_band"` and the
+  optional alias `group_by = "age_band"`.
+- Age-band labels are assigned from `attr(results, "spec")$ages`, using the
+  same `age_bands()`/`pmslt_spec()` age-band table used elsewhere in the
+  package.
+- All-cause summaries can aggregate `population`, `deaths`, `person_years`,
+  `yld`, and integrated disease total columns by `age_band`.
+- Disease-specific summaries can aggregate the `disease_deltas` attribute by
+  `age_band` and by combined `disease` plus `age_band`.
+- Added beginner-friendly errors when age-band summaries are requested but the
+  result has no attached `pmslt_spec`, invalid `spec$ages`, or exact ages not
+  covered by the configured age bands.
+
+Boundary:
+
+- Exact integer age remains the internal lifetable and disease input state.
+- No lifetable formulas, disease-delta formulas, intervention effects, costs,
+  PSA, HALYs, DALYs, or population ageing logic were changed.
+
+Validation:
+
+- Added tests for BAU age-band output columns, equality of summed age-band and
+  exact-age totals, integrated disease age-band summaries,
+  disease-plus-age-band summaries, and missing age-band information errors.
+- `devtools::document()` completed and regenerated
+  `man/summarise_pmslt_results.Rd`.
+- `devtools::test()` passed with 293 tests.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`

@@ -40,6 +40,60 @@ lifetable_disease_epi <- function(diseases = "CHD") {
   out
 }
 
+age_band_summary_spec <- function() {
+  pmslt_spec(
+    intervention = "Test",
+    mechanism = "direct",
+    diseases = c("CHD", "Stroke"),
+    ages = age_bands(40, 45, by = 3, open_ended = FALSE),
+    sexes = "female",
+    strata = "total",
+    horizon = 1
+  )
+}
+
+age_band_lifetable_population <- function() {
+  data.frame(
+    age = 40:45,
+    sex = "female",
+    stratum = "total",
+    population = c(1000, 900, 800, 700, 600, 500),
+    stringsAsFactors = FALSE
+  )
+}
+
+age_band_lifetable_mortality <- function() {
+  data.frame(
+    age = 40:45,
+    sex = "female",
+    stratum = "total",
+    mortality_rate = seq(0.01, 0.06, by = 0.01),
+    stringsAsFactors = FALSE
+  )
+}
+
+age_band_lifetable_disease_epi <- function(diseases = "CHD") {
+  rows <- lapply(diseases, function(disease) {
+    data.frame(
+      age = 40:45,
+      sex = "female",
+      stratum = "total",
+      disease = disease,
+      time_step = 0L,
+      incidence_BAU = seq(0.01, 0.06, by = 0.01),
+      prevalence_initial = seq(0.10, 0.35, by = 0.05),
+      remission_rate = 0,
+      excess_mortality_BAU = seq(0.02, 0.07, by = 0.01),
+      case_fatality_BAU = seq(0.03, 0.08, by = 0.01),
+      disability_weight = seq(0.20, 0.45, by = 0.05),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out
+}
+
 test_that("valid single-year inputs initialize deterministic lifetable quantities", {
   result <- initialize_pmslt_lifetable(lifetable_population(), lifetable_mortality())
 
@@ -537,6 +591,38 @@ test_that("BAU summary can group by exact age", {
   expect_equal(summary$population, lifetable_population()$population)
 })
 
+test_that("BAU summary can group by configured age bands", {
+  spec <- age_band_summary_spec()
+  bau <- run_pmslt_lifetable_bau(
+    age_band_lifetable_population(),
+    age_band_lifetable_mortality(),
+    spec = spec
+  )
+
+  summary <- summarise_pmslt_results(bau, group_by = "age_band")
+
+  expect_equal(names(summary), c("age_band", "population", "deaths", "person_years", "yld"))
+  expect_equal(summary$age_band, c("40-42", "43-45"))
+  expect_equal(summary$population, c(2700, 1800))
+})
+
+test_that("age-band BAU totals equal exact-age totals when summed", {
+  spec <- age_band_summary_spec()
+  bau <- run_pmslt_lifetable_bau(
+    age_band_lifetable_population(),
+    age_band_lifetable_mortality(),
+    spec = spec
+  )
+
+  exact_age <- summarise_pmslt_results(bau, by = "age")
+  age_band <- summarise_pmslt_results(bau, by = "age_band")
+
+  expect_equal(sum(age_band$population), sum(exact_age$population))
+  expect_equal(sum(age_band$deaths), sum(exact_age$deaths))
+  expect_equal(sum(age_band$person_years), sum(exact_age$person_years))
+  expect_equal(sum(age_band$yld), sum(exact_age$yld))
+})
+
 test_that("integrated disease totals are included in non-disease summaries", {
   lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
   integrated <- integrate_disease_deltas(lifetable, lifetable_disease_epi(c("CHD", "Stroke")))
@@ -562,6 +648,56 @@ test_that("disease-specific summary uses disease_deltas attribute", {
   expect_equal(summary$disease_cases, expected_cases)
 })
 
+test_that("integrated disease summaries can group by age band", {
+  spec <- age_band_summary_spec()
+  lifetable <- run_pmslt_lifetable_bau(
+    age_band_lifetable_population(),
+    age_band_lifetable_mortality(),
+    spec = spec
+  )
+  integrated <- integrate_disease_deltas(
+    lifetable,
+    age_band_lifetable_disease_epi(c("CHD", "Stroke"))
+  )
+
+  summary <- summarise_pmslt_results(integrated, by = "age_band")
+  exact_age <- summarise_pmslt_results(integrated, by = "age")
+
+  expect_equal(
+    names(summary),
+    c(
+      "age_band", "population", "deaths", "person_years", "yld",
+      "total_disease_cases", "total_disease_deaths", "total_disease_yld"
+    )
+  )
+  expect_equal(summary$age_band, c("40-42", "43-45"))
+  expect_equal(sum(summary$total_disease_cases), sum(exact_age$total_disease_cases))
+  expect_equal(sum(summary$total_disease_deaths), sum(exact_age$total_disease_deaths))
+  expect_equal(sum(summary$total_disease_yld), sum(exact_age$total_disease_yld))
+})
+
+test_that("disease-specific summaries can group by disease and age band", {
+  spec <- age_band_summary_spec()
+  lifetable <- run_pmslt_lifetable_bau(
+    age_band_lifetable_population(),
+    age_band_lifetable_mortality(),
+    spec = spec
+  )
+  integrated <- integrate_disease_deltas(
+    lifetable,
+    age_band_lifetable_disease_epi(c("CHD", "Stroke"))
+  )
+  exact_age <- summarise_pmslt_results(integrated, by = c("disease", "age"))
+
+  summary <- summarise_pmslt_results(integrated, by = c("disease", "age_band"))
+
+  expect_equal(names(summary), c("disease", "age_band", "disease_cases", "disease_deaths", "disease_yld"))
+  expect_equal(sort(unique(summary$age_band)), c("40-42", "43-45"))
+  expect_equal(sum(summary$disease_cases), sum(exact_age$disease_cases))
+  expect_equal(sum(summary$disease_deaths), sum(exact_age$disease_deaths))
+  expect_equal(sum(summary$disease_yld), sum(exact_age$disease_yld))
+})
+
 test_that("requesting disease summary without disease_deltas gives clear error", {
   bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
 
@@ -571,11 +707,20 @@ test_that("requesting disease summary without disease_deltas gives clear error",
   )
 })
 
-test_that("invalid summary grouping variable gives clear error", {
+test_that("missing age-band information gives clear error", {
   bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
 
   expect_error(
     summarise_pmslt_results(bau, by = "age_band"),
+    "does not include age-band information"
+  )
+})
+
+test_that("invalid summary grouping variable gives clear error", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+
+  expect_error(
+    summarise_pmslt_results(bau, by = "calendar_year"),
     "Unknown summary grouping variable"
   )
 })

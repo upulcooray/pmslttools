@@ -1,6 +1,6 @@
 # pmslttools Package Architecture
 
-Last updated: 2026-05-17
+Last updated: 2026-05-22
 
 ## Package Aim
 
@@ -408,7 +408,8 @@ Responsibilities:
 - Attach deterministic disease-attributable cases, deaths, and YLDs from
   exact-age `pmslt_disease_epi.csv` beside all-cause BAU lifetable rows.
 - Summarise BAU all-cause and disease-delta outputs overall or by exact
-  `time_step`, `age`, `sex`, `stratum`, and `disease`.
+  `time_step`, `age`, `sex`, `stratum`, `disease`, and reporting-only
+  `age_band`.
 - Run BAU and intervention population lifetables.
 - Integrate disease-specific mortality and morbidity deltas from the disease
   module.
@@ -444,8 +445,10 @@ Ageing and rate rules:
   this first single-year disease-delta slice.
 - Disease-specific long output is retained in the `disease_deltas` attribute on
   the returned lifetable.
-- `summarise_pmslt_results()` keeps exact single-year age for reporting in this
-  slice. It does not create age bands or intervention contrasts yet.
+- `summarise_pmslt_results()` can aggregate exact ages into `age_band` labels
+  from `attr(results, "spec")$ages`. This is reporting-only; exact
+  single-year age remains the engine state.
+- `summarise_pmslt_results()` does not create intervention contrasts yet.
 
 ## Layer 8: Planned Uncertainty, Costs, and Equity Extensions
 
@@ -528,6 +531,7 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 - `run_pmslt_lifetable_bau()`
 - `run_pmslt_interventions()`
 - `pmslt_spec()`
+- `summarise_pmslt_results()`
 - `dismod_slove()`
 - `smooth_dismod_age_curve()`
 - `validate_pmslt_disease_inputs()`

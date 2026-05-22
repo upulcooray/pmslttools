@@ -352,15 +352,16 @@ integrate_disease_deltas <- function(lifetable, disease_epi) {
 #'
 #' Creates beginner-friendly summary tables from BAU all-cause lifetable output
 #' and from lifetables with attached disease-delta quantities. Summaries use the
-#' package's exact single-year age internally; age-band reporting is a later
-#' layer and is not applied here.
+#' package's exact single-year age internally. Use `"age_band"` to report ages
+#' in the age bands stored in the `pmslt_spec` used to run the lifetable.
 #'
 #' @param results Output from [run_pmslt_lifetable_bau()] or
 #'   [integrate_disease_deltas()].
 #' @param by Character vector of grouping variables. Use `"overall"` for one
 #'   ungrouped summary row, or any combination of `"time_step"`, `"sex"`,
-#'   `"stratum"`, and `"age"`. Include `"disease"` to summarise the
-#'   disease-specific long output stored by [integrate_disease_deltas()].
+#'   `"stratum"`, `"age"`, and `"age_band"`. Include `"disease"` to summarise
+#'   the disease-specific long output stored by [integrate_disease_deltas()].
+#' @param group_by Optional alias for `by`.
 #'
 #' @return A plain data frame with grouping columns followed by summary
 #'   metrics.
@@ -379,19 +380,35 @@ integrate_disease_deltas <- function(lifetable, disease_epi) {
 #'   stratum = "total",
 #'   mortality_rate = c(0.01, 0.02)
 #' )
-#' bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1)
+#' spec <- pmslt_spec(
+#'   intervention = "Example",
+#'   mechanism = "direct",
+#'   diseases = "CHD",
+#'   ages = age_bands(40, 45, by = 3, open_ended = FALSE),
+#'   sexes = "female",
+#'   strata = "total",
+#'   horizon = 1
+#' )
+#' bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1, spec = spec)
 #' summarise_pmslt_results(bau)
 #' summarise_pmslt_results(bau, by = "age")
+#' summarise_pmslt_results(bau, by = "age_band")
 summarise_pmslt_results <- function(results,
-                                    by = c("overall", "time_step", "sex", "stratum", "age", "disease")) {
-  if (missing(by)) {
+                                    by = c("overall", "time_step", "sex", "stratum", "age", "age_band", "disease"),
+                                    group_by = NULL) {
+  if (!is.null(group_by)) {
+    if (!missing(by)) {
+      stop("Use either `by` or `group_by`, not both.", call. = FALSE)
+    }
+    by <- group_by
+  } else if (missing(by)) {
     by <- "overall"
   }
   if (!is.data.frame(results)) {
     stop("`results` must be a data frame returned by `run_pmslt_lifetable_bau()` or `integrate_disease_deltas()`.", call. = FALSE)
   }
 
-  allowed <- c("overall", "time_step", "sex", "stratum", "age", "disease")
+  allowed <- c("overall", "time_step", "sex", "stratum", "age", "age_band", "disease")
   by <- as.character(by)
   bad <- setdiff(by, allowed)
   if (length(bad) > 0) {
@@ -402,7 +419,7 @@ summarise_pmslt_results <- function(results,
     )
   }
   if ("overall" %in% by && length(by) > 1) {
-    stop("Use `by = \"overall\"` by itself, or choose specific grouping variables such as `time_step`, `sex`, `stratum`, `age`, or `disease`.", call. = FALSE)
+    stop("Use `by = \"overall\"` by itself, or choose specific grouping variables such as `time_step`, `sex`, `stratum`, `age`, `age_band`, or `disease`.", call. = FALSE)
   }
 
   if ("disease" %in% by) {
@@ -688,6 +705,9 @@ validate_disease_delta_lifetable <- function(lifetable) {
 
 summarise_all_cause_results <- function(results, by) {
   group_cols <- if (identical(by, "overall")) character() else by
+  if ("age_band" %in% group_cols) {
+    results <- attach_summary_age_band(results, results)
+  }
   missing_groups <- setdiff(group_cols, names(results))
   if (length(missing_groups) > 0) {
     stop("Cannot summarise by `", missing_groups[[1]], "` because that column is not in `results`.", call. = FALSE)
@@ -716,6 +736,9 @@ summarise_disease_delta_results <- function(results, by) {
   }
 
   group_cols <- by
+  if ("age_band" %in% group_cols) {
+    disease_deltas <- attach_summary_age_band(disease_deltas, results)
+  }
   missing_groups <- setdiff(group_cols, names(disease_deltas))
   if (length(missing_groups) > 0) {
     stop("Cannot summarise by `", missing_groups[[1]], "` because that column is not in the disease-delta output.", call. = FALSE)
@@ -723,6 +746,72 @@ summarise_disease_delta_results <- function(results, by) {
   metric_cols <- c("disease_cases", "disease_deaths", "disease_yld")
   require_summary_metrics(disease_deltas, metric_cols, "disease_deltas")
   summarise_numeric_columns(disease_deltas, group_cols, metric_cols)
+}
+
+attach_summary_age_band <- function(data, results) {
+  age_table <- summary_age_table(results)
+  require_columns(data, "age", "results")
+  age <- suppressWarnings(as.numeric(data$age))
+  if (any(is.na(age)) || any(abs(age - round(age)) > .Machine$double.eps^0.5)) {
+    stop("Cannot summarise by `age_band` because `age` must contain exact whole-number ages.", call. = FALSE)
+  }
+
+  matched <- rep(NA_character_, length(age))
+  for (i in seq_len(nrow(age_table))) {
+    in_band <- age >= age_table$age_start[[i]] & age <= age_table$age_end[[i]]
+    matched[in_band] <- age_table$age_label[[i]]
+  }
+  if (any(is.na(matched))) {
+    first_age <- age[which(is.na(matched))[[1]]]
+    stop(
+      "Cannot summarise by `age_band` because age ", first_age,
+      " is not covered by the age bands in `spec$ages`. ",
+      "Update the `ages` argument in `pmslt_spec()` or summarise by exact `age`.",
+      call. = FALSE
+    )
+  }
+
+  data$age_band <- matched
+  data
+}
+
+summary_age_table <- function(results) {
+  spec <- attr(results, "spec", exact = TRUE)
+  if (!inherits(spec, "pmslt_spec")) {
+    stop(
+      "Cannot summarise by `age_band` because `results` does not include age-band information. ",
+      "Run the lifetable with `spec = pmslt_spec(..., ages = age_bands(...))`, ",
+      "or summarise by exact `age`.",
+      call. = FALSE
+    )
+  }
+  age_table <- tryCatch(
+    validate_age_table(spec$ages),
+    error = function(e) {
+      stop(
+        "Cannot summarise by `age_band` because `spec$ages` is not a valid age-band table. ",
+        "Use `age_bands()` or a data frame with age_start, age_end, and age_label.",
+        call. = FALSE
+      )
+    }
+  )
+  if (nrow(age_table) == 0) {
+    stop(
+      "Cannot summarise by `age_band` because `spec$ages` has no age bands. ",
+      "Use `age_bands()` when creating the `pmslt_spec()`.",
+      call. = FALSE
+    )
+  }
+  age_table$age_start <- suppressWarnings(as.numeric(age_table$age_start))
+  age_table$age_end <- suppressWarnings(as.numeric(age_table$age_end))
+  if (any(is.na(age_table$age_start)) || any(is.na(age_table$age_end))) {
+    stop(
+      "Cannot summarise by `age_band` because `spec$ages` has non-numeric age_start or age_end values. ",
+      "Use `age_bands()` when creating the `pmslt_spec()`.",
+      call. = FALSE
+    )
+  }
+  age_table[order(age_table$age_start, age_table$age_end), , drop = FALSE]
 }
 
 require_summary_metrics <- function(data, metrics, label) {

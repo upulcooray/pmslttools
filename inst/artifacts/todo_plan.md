@@ -1,6 +1,6 @@
 # pmslttools Todo Plan
 
-Last updated: 2026-05-17
+Last updated: 2026-05-22
 
 ## Guiding Priorities
 
@@ -444,6 +444,8 @@ Todo:
   run.
 - Use `attr(results, "disease_deltas")` for disease-specific summaries when
   `by` includes `disease`.
+- Add reporting-only `age_band` summaries using age bands stored in
+  `pmslt_spec()`, without changing single-year lifetable calculations.
 - Later modules can add:
   - life years
   - HALYs/DALYs
@@ -451,12 +453,11 @@ Todo:
   - morbidity changes
   - intervention contrasts
   - stratified differences
-  - age-band reporting
 
 Acceptance criteria:
 
 - BAU and disease-delta outputs can be summarised by exact age, disease, sex,
-  stratum, and time.
+  stratum, time, and configured age band.
 - Intervention summaries remain future work.
 
 Implementation note:
@@ -469,7 +470,12 @@ Implementation note:
   `total_disease_deaths`, and `total_disease_yld`.
 - Disease-specific summaries require the `disease_deltas` attribute and return
   `disease_cases`, `disease_deaths`, and `disease_yld`.
-- This slice keeps exact integer age only; no age-band reporting was added.
+- Age-band summaries are now supported with `by = "age_band"` or
+  `group_by = "age_band"` when results were created with
+  `spec = pmslt_spec(..., ages = age_bands(...))`.
+- Disease-specific summaries can group by both `disease` and `age_band`.
+- Age-band reporting is an aggregation layer only; exact integer age remains
+  the engine state.
 
 ## Phase 5: Costs and PSA
 

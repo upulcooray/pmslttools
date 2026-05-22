@@ -1,6 +1,6 @@
 # CODEX Notes for pmslttools
 
-Last updated: 2026-05-20
+Last updated: 2026-05-22
 
 ## Project Purpose
 
@@ -51,6 +51,8 @@ The package should guide users through:
 9. Raw epidemiology templates may remain age-banded; future PMSLT engine
    modules should use exact integer age internally and aggregate ages only for
    reporting outputs.
+10. Age-band summaries are reporting-only and must come from `spec$ages`; do
+    not change lifetable age calculations to implement grouped reporting.
 
 ## Current Public API
 
@@ -174,6 +176,7 @@ disease_attached <- integrate_disease_deltas(
 
 summarise_pmslt_results(disease_attached)
 summarise_pmslt_results(disease_attached, by = c("disease", "age"))
+summarise_pmslt_results(disease_attached, by = c("disease", "age_band"))
 ```
 
 ## Current Known Issues
@@ -190,8 +193,9 @@ summarise_pmslt_results(disease_attached, by = c("disease", "age"))
 6. `run_pmslt_lifetable_bau()` ages survivors forward across BAU cycles, but
    it still does not add births, migration, entrants, interventions, costs,
    equity, or PSA.
-7. `summarise_pmslt_results()` reports exact-age summaries only; age-band
-   reporting is future work.
+7. `summarise_pmslt_results()` supports exact-age summaries and reporting-only
+   `age_band` summaries when the lifetable result has a `pmslt_spec` with
+   age bands attached.
 
 ## Next Best Tasks
 

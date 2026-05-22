@@ -6,7 +6,8 @@
 \usage{
 summarise_pmslt_results(
   results,
-  by = c("overall", "time_step", "sex", "stratum", "age", "disease")
+  by = c("overall", "time_step", "sex", "stratum", "age", "age_band", "disease"),
+  group_by = NULL
 )
 }
 \arguments{
@@ -15,8 +16,10 @@ summarise_pmslt_results(
 
 \item{by}{Character vector of grouping variables. Use \code{"overall"} for one
 ungrouped summary row, or any combination of \code{"time_step"}, \code{"sex"},
-\code{"stratum"}, and \code{"age"}. Include \code{"disease"} to summarise the
-disease-specific long output stored by \code{\link[=integrate_disease_deltas]{integrate_disease_deltas()}}.}
+\code{"stratum"}, \code{"age"}, and \code{"age_band"}. Include \code{"disease"} to summarise
+the disease-specific long output stored by \code{\link[=integrate_disease_deltas]{integrate_disease_deltas()}}.}
+
+\item{group_by}{Optional alias for \code{by}.}
 }
 \value{
 A plain data frame with grouping columns followed by summary
@@ -25,8 +28,8 @@ metrics.
 \description{
 Creates beginner-friendly summary tables from BAU all-cause lifetable output
 and from lifetables with attached disease-delta quantities. Summaries use the
-package's exact single-year age internally; age-band reporting is a later
-layer and is not applied here.
+package's exact single-year age internally. Use \code{"age_band"} to report ages
+in the age bands stored in the \code{pmslt_spec} used to run the lifetable.
 }
 \examples{
 population <- data.frame(
@@ -41,7 +44,17 @@ mortality <- data.frame(
   stratum = "total",
   mortality_rate = c(0.01, 0.02)
 )
-bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1)
+spec <- pmslt_spec(
+  intervention = "Example",
+  mechanism = "direct",
+  diseases = "CHD",
+  ages = age_bands(40, 45, by = 3, open_ended = FALSE),
+  sexes = "female",
+  strata = "total",
+  horizon = 1
+)
+bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1, spec = spec)
 summarise_pmslt_results(bau)
 summarise_pmslt_results(bau, by = "age")
+summarise_pmslt_results(bau, by = "age_band")
 }

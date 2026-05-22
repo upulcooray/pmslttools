@@ -30,7 +30,7 @@ This first scaffold includes:
   cases, deaths, and YLDs beside BAU all-cause lifetable rows.
 - `summarise_pmslt_results()` to inspect BAU all-cause and disease-delta
   outputs overall or by exact `time_step`, `age`, `sex`, `stratum`, and
-  `disease`.
+  `disease`, or by the reporting `age_band` labels stored in `pmslt_spec()`.
 
 Full simulation engine functions will be migrated from the existing PMSLT
 template in later modules.
@@ -123,10 +123,20 @@ mortality <- data.frame(
 )
 
 lifetable <- initialize_pmslt_lifetable(population, mortality)
-bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1)
+summary_spec <- pmslt_spec(
+  intervention = "Reporting example",
+  mechanism = "direct",
+  diseases = "CHD",
+  ages = age_bands(40, 45, by = 3, open_ended = FALSE),
+  sexes = "female",
+  strata = "total",
+  horizon = 1
+)
+bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1, spec = summary_spec)
 disease_attached <- integrate_disease_deltas(bau, disease_epi)
 summarise_pmslt_results(disease_attached)
 summarise_pmslt_results(disease_attached, by = c("disease", "age"))
+summarise_pmslt_results(disease_attached, by = c("disease", "age_band"))
 ```
 
 `initialize_pmslt_lifetable()` runs one deterministic BAU time step.
@@ -142,6 +152,9 @@ kept in the `disease_deltas` attribute.
 `summarise_pmslt_results()` returns plain data-frame summaries for all-cause
 lifetable metrics and, when disease deltas are attached, disease-attributable
 metrics. Disease-specific summaries use the `disease_deltas` attribute.
+Age-band summaries use the age labels in `spec$ages`, so run the lifetable with
+`spec = pmslt_spec(..., ages = age_bands(...))` when you need grouped age
+reporting.
 
 These all-cause lifetable functions do not apply interventions, PIFs, direct
 effects, costs, PSA, births, migration, or entrants yet. Disease-attributable
