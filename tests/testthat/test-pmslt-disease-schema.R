@@ -121,12 +121,17 @@ test_that("validate_pmslt_disease_inputs rejects age bands in PMSLT-ready inputs
 
 test_that("PMSLT-ready disease examples do not use age-band columns", {
   extract_code_blocks <- function(path) {
-    if (!file.exists(path)) {
-      path <- file.path("..", "..", path)
-    }
-    if (!file.exists(path)) {
+    candidates <- c(
+      path,
+      file.path("..", "..", path),
+      file.path("..", "..", "pmslttools", path),
+      file.path("..", "..", "00_pkg_src", "pmslttools", path)
+    )
+    existing <- candidates[file.exists(candidates)]
+    if (length(existing) == 0) {
       return(character())
     }
+    path <- existing[[1]]
     lines <- readLines(path, warn = FALSE)
     fence <- grepl("^```", lines)
     if (!any(fence)) {

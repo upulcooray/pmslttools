@@ -191,11 +191,12 @@ Implementation note:
 - Added exported `validate_raw_inputs(input_dir, spec = NULL)`.
 - The validator uses central schema metadata plus optional `pmslt_spec`
   information to check expected files, duplicate files, duplicated columns,
-  missing columns, required missing values, numeric types, allowed generated
-  values, non-negative rates, proportions bounded by 0 and 1, positive relative
-  risks/rate ratios, age-band ordering, and simple uncertainty bounds.
-- It returns all issues it can find instead of stopping early, except for
-  catastrophic unreadable directory inputs.
+  unexpected columns, missing columns, required missing values, numeric types,
+  allowed generated values, duplicate identifying rows, non-negative rates,
+  proportions bounded by 0 and 1, positive relative risks/rate ratios,
+  age-band ordering, and simple uncertainty bounds.
+- It returns all issues it can find instead of stopping early, including a
+  stable issue table when `input_dir` does not exist or is not a folder.
 
 ### 2.3 Add issue-list output format
 

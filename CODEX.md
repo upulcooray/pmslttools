@@ -66,6 +66,7 @@ The package should guide users through:
 - `age_bands()`
 - `validate_spec()`
 - `draft_input_templates()`
+- `validate_raw_inputs()`
 - `write_input_template_guide()`
 - `diagnose_missing_parameters()`
 - `dismod_slove()`

@@ -42,11 +42,33 @@ pmslt_input_schemas <- function() {
       purpose = files[[template_name]]$purpose,
       rows = files[[template_name]]$rows,
       columns = schema,
+      key_columns = raw_template_key_columns(template_name),
       checks = files[[template_name]]$checks,
       requirement_groups = requirements[[template_name]]
     )
   }) |>
     stats::setNames(names(files))
+}
+
+raw_template_key_columns <- function(template_name) {
+  switch(
+    template_name,
+    "00_column_dictionary" = c("file", "column"),
+    "00_model_specification" = "field",
+    "01_population" = c("age_start", "sex", "stratum"),
+    "02_all_cause_mortality" = c("age_start", "sex", "stratum"),
+    "03_all_cause_morbidity" = c("age_start", "sex", "stratum"),
+    "04_life_expectancy" = "age",
+    "05_disease_epidemiology_raw" = c("age_start", "sex", "stratum", "disease"),
+    "06_dismod_input_skeleton" = c("age_start", "sex", "stratum", "disease", "parameter"),
+    "07_bau_trends" = "disease",
+    "08_risk_factor_prevalence" = c("age_start", "sex", "stratum", "time_step", "intervention", "risk_factor", "risk_category"),
+    "09_relative_risks" = c("age_start", "sex", "stratum", "risk_factor", "disease", "risk_category"),
+    "10_direct_intervention_effects" = c("age_start", "sex", "stratum", "disease", "intervention"),
+    "11_stratum_rate_ratios" = "stratum",
+    "12_costs" = c("age_start", "sex", "stratum", "disease"),
+    character()
+  )
 }
 
 template_file_dictionary <- function() {

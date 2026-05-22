@@ -14,6 +14,8 @@ This first scaffold includes:
 - `pmslt_spec()` to define a model from minimal information.
 - `age_bands()` to create standard age-group definitions.
 - `draft_input_templates()` to generate beginner-friendly CSV templates.
+- `validate_raw_inputs()` to check completed raw CSV templates before
+  DisMod-lite preparation.
 - `validate_spec()` and `diagnose_missing_parameters()` to explain modelling
   requirements before data collection.
 - `dismod_slove()` to read an `input_raw` directory, disaggregate coarse
@@ -58,6 +60,7 @@ spec <- pmslt_spec(
 )
 
 draft_input_templates(spec, output_dir = "inputs_raw")
+issues <- validate_raw_inputs("inputs_raw", spec)
 dismod_slove("inputs_raw")
 dismod_slove("inputs_raw", uncertainty = TRUE, draws = 2000, seed = 1)
 ```
@@ -66,7 +69,10 @@ This creates the CSV templates and a `README_inputs_raw.md` guide inside the
 output folder. The guide explains every file and every blank column that the
 student needs to fill before DisMod processing. The output also includes
 `00_column_dictionary.csv`, which marks columns as generated, required,
-conditional, or optional.
+conditional, or optional. After filling the templates, run
+`validate_raw_inputs()` to get a single issue table covering missing files,
+missing values, type problems, unexpected columns, duplicated rows, and
+specification mismatches before moving on to DisMod-lite.
 
 ## Mock DisMod demonstration
 

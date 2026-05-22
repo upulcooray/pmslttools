@@ -128,12 +128,15 @@ Change:
 - The validator checks:
   - missing expected raw CSV files;
   - unexpected duplicate CSV copies;
+  - invalid `input_dir` paths returned as issue tables;
   - missing and duplicated columns;
+  - unexpected extra columns reported as warnings;
   - blank required values;
   - numeric, integer, and calendar-year type problems;
   - schema-defined allowed values;
   - `pmslt_spec`-derived generated values such as sex, stratum, disease,
     intervention, risk factor, risk category, age bands, and time steps;
+  - duplicate rows using identifying key columns defined in the raw schema;
   - non-negative rates and counts;
   - proportions bounded by 0 and 1;
   - positive relative risks and rate ratios;

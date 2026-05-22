@@ -88,7 +88,13 @@ test_that("missing required files are reported", {
 
   issues <- validate_raw_inputs(input_dir, spec)
 
-  expect_true(any(issues$file == "01_population.csv" & grepl("missing", issues$message)))
+  missing_issue <- issues[issues$file == "01_population.csv" & grepl("missing", issues$message), ]
+  expect_equal(nrow(missing_issue), 1)
+  expect_true(is.na(missing_issue$row))
+  expect_true(is.na(missing_issue$column))
+  expect_equal(missing_issue$severity, "error")
+  expect_match(missing_issue$message, "Required raw input file")
+  expect_match(missing_issue$suggested_fix, "Regenerate")
 })
 
 test_that("missing required columns are reported", {
@@ -101,6 +107,23 @@ test_that("missing required columns are reported", {
   issues <- validate_raw_inputs(input_dir, spec)
 
   expect_true(any(issues$file == "01_population.csv" & issues$column == "source" & grepl("missing", issues$message)))
+})
+
+test_that("unexpected extra columns are reported as warnings", {
+  spec <- valid_direct_spec()
+  input_dir <- write_valid_raw_inputs(spec)
+  population <- read_raw_csv(input_dir, "01_population.csv")
+  population$extra_comment <- "extra"
+  write_raw_csv(input_dir, "01_population.csv", population)
+
+  issues <- validate_raw_inputs(input_dir, spec)
+
+  expect_true(any(
+    issues$file == "01_population.csv" &
+      issues$column == "extra_comment" &
+      issues$severity == "warning" &
+      grepl("not part of this raw input template", issues$message)
+  ))
 })
 
 test_that("duplicated column names are reported", {
@@ -147,6 +170,23 @@ test_that("invalid categorical values are reported from the spec", {
   expect_true(any(issues$file == "01_population.csv" & issues$column == "sex" & grepl("not expected", issues$message)))
 })
 
+test_that("invalid allowed values from the schema are reported", {
+  spec <- valid_direct_spec()
+  input_dir <- write_valid_raw_inputs(spec)
+  dismod <- read_raw_csv(input_dir, "06_dismod_input_skeleton.csv")
+  dismod$parameter[[1]] <- "not_a_parameter"
+  write_raw_csv(input_dir, "06_dismod_input_skeleton.csv", dismod)
+
+  issues <- validate_raw_inputs(input_dir, spec)
+
+  expect_true(any(
+    issues$file == "06_dismod_input_skeleton.csv" &
+      issues$row == 1 &
+      issues$column == "parameter" &
+      grepl("not expected", issues$message)
+  ))
+})
+
 test_that("missing required values are reported", {
   spec <- valid_direct_spec()
   input_dir <- write_valid_raw_inputs(spec)
@@ -157,6 +197,23 @@ test_that("missing required values are reported", {
   issues <- validate_raw_inputs(input_dir, spec)
 
   expect_true(any(issues$file == "01_population.csv" & issues$row == 1 & issues$column == "initial_population" & grepl("blank", issues$message)))
+})
+
+test_that("duplicate key rows are reported where schema defines keys", {
+  spec <- valid_direct_spec()
+  input_dir <- write_valid_raw_inputs(spec)
+  population <- read_raw_csv(input_dir, "01_population.csv")
+  population <- rbind(population, population[1, ])
+  write_raw_csv(input_dir, "01_population.csv", population)
+
+  issues <- validate_raw_inputs(input_dir, spec)
+
+  expect_true(any(
+    issues$file == "01_population.csv" &
+      issues$row == 3 &
+      issues$column == "age_start, sex, stratum" &
+      grepl("repeats the same identifying values", issues$message)
+  ))
 })
 
 test_that("invalid bounds are reported for rates and proportions", {
@@ -210,6 +267,25 @@ test_that("issue table structure is stable", {
   expect_type(issues$severity, "character")
   expect_type(issues$message, "character")
   expect_type(issues$suggested_fix, "character")
+})
+
+test_that("missing folders and file paths return issue tables", {
+  missing_dir <- file.path(tempdir(), "raw_inputs_that_do_not_exist")
+  issues <- validate_raw_inputs(missing_dir)
+
+  expect_validation_columns(issues)
+  expect_equal(nrow(issues), 1)
+  expect_equal(issues$severity, "error")
+  expect_match(issues$message, "does not exist")
+
+  file_path <- tempfile(fileext = ".csv")
+  writeLines("x", file_path)
+  file_issues <- validate_raw_inputs(file_path)
+
+  expect_validation_columns(file_issues)
+  expect_equal(nrow(file_issues), 1)
+  expect_equal(file_issues$severity, "error")
+  expect_match(file_issues$message, "not a folder")
 })
 
 test_that("validation issue ordering is deterministic", {

@@ -181,10 +181,11 @@ Responsibilities:
   requirement levels, validation types, and allowed values.
 - Accumulate beginner-readable issues in a stable table with columns:
   `file`, `row`, `column`, `severity`, `message`, and `suggested_fix`.
-- Check file existence, duplicate files, required columns, duplicated column
-  names, missing required values, type coercion, allowed generated values when
-  a `pmslt_spec` is supplied, basic numeric bounds, age-band ordering, and
-  simple uncertainty-bound ordering.
+- Check file existence, duplicate files, required columns, unexpected columns,
+  duplicated column names, missing required values, type coercion, duplicate
+  identifying rows, allowed generated values when a `pmslt_spec` is supplied,
+  basic numeric bounds, age-band ordering, and simple uncertainty-bound
+  ordering.
 
 Boundary:
 
