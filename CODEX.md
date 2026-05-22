@@ -56,6 +56,9 @@ The package should guide users through:
 11. Intervention comparisons are reporting-only in this slice. Use
     `compare_pmslt_results()` for compatible completed outputs; do not add new
     intervention simulation mechanics here.
+12. HALY summaries are reporting-only in this slice. Calculate them from
+    existing `person_years` and `yld`; do not add discounting, age weighting,
+    costs, DALYs, PSA, or engine changes here.
 
 ## Current Public API
 
@@ -85,6 +88,8 @@ The package should guide users through:
 - `integrate_disease_deltas()`
 - `summarise_pmslt_results()`
 - `compare_pmslt_results()`
+- `calculate_halys()`
+- `compare_halys()`
 
 ## Important Files
 
@@ -99,7 +104,7 @@ The package should guide users through:
   disease lifetable, multi-arm intervention runner.
 - `R/main-lifetable.R`: deterministic BAU all-cause lifetable initialization,
   single-year ageing, disease-attributable quantity attachment, and summary
-  helpers.
+  helpers including simple HALY reporting.
 - `tests/testthat/`: package tests.
 
 ## Current Workflow Shape
@@ -181,6 +186,9 @@ disease_attached <- integrate_disease_deltas(
 summarise_pmslt_results(disease_attached)
 summarise_pmslt_results(disease_attached, by = c("disease", "age"))
 summarise_pmslt_results(disease_attached, by = c("disease", "age_band"))
+calculate_halys(disease_attached)
+calculate_halys(disease_attached, by = "age_band")
+compare_halys(disease_attached, disease_attached)
 ```
 
 ## Current Known Issues
@@ -203,6 +211,9 @@ summarise_pmslt_results(disease_attached, by = c("disease", "age_band"))
 8. `compare_pmslt_results()` compares compatible PMSLT outputs against BAU
    outputs as `intervention - BAU` deltas overall or by `time_step`, `sex`,
    `stratum`, exact `age`, or reporting `age_band`.
+9. `calculate_halys()` and `compare_halys()` report simple HALY-style outcomes
+   as `person_years - yld`, using the existing summary layer and requiring a
+   `yld` column.
 
 ## Next Best Tasks
 

@@ -392,6 +392,8 @@ Public functions:
 - `integrate_disease_deltas()`
 - `summarise_pmslt_results()`
 - `compare_pmslt_results()`
+- `calculate_halys()`
+- `compare_halys()`
 
 Source template concepts:
 
@@ -414,6 +416,8 @@ Responsibilities:
 - Compare compatible intervention outputs against BAU outputs as simple
   `intervention - BAU` reporting deltas overall or by `time_step`, `sex`,
   `stratum`, exact `age`, and reporting-only `age_band`.
+- Calculate simple HALY-style summaries from existing `person_years` and `yld`
+  outputs, and compare compatible HALY summaries as `intervention - BAU`.
 - Run BAU and intervention population lifetables.
 - Integrate disease-specific mortality and morbidity deltas from the disease
   module.
@@ -457,6 +461,13 @@ Ageing and rate rules:
   `stratum` rows before calculating differences.
 - Disease-specific long-output contrasts remain later work; this slice only
   compares all-cause metrics and integrated disease-total columns.
+- `calculate_halys()` reuses `summarise_pmslt_results()` and reports
+  `halys = person_years - yld`, preserving grouping columns and integrated
+  disease-total columns when available.
+- `compare_halys()` validates compatible BAU and intervention structures, then
+  returns HALY, person-years, and YLD differences as `intervention - BAU`.
+- HALY reporting does not add discounting, age weighting, DALYs, costs, PSA,
+  uncertainty intervals, or engine calculation changes.
 
 ## Layer 8: Planned Uncertainty, Costs, and Equity Extensions
 
@@ -522,7 +533,10 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 ## Current Public API
 
 - `age_bands()`
+- `calculate_halys()`
 - `calculate_pif_from_inputs()`
+- `compare_halys()`
+- `compare_pmslt_results()`
 - `validate_risk_prevalence_inputs()`
 - `diagnose_missing_parameters()`
 - `draft_input_templates()`

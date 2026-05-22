@@ -599,3 +599,47 @@ Related artifacts updated:
 - `inst/artifacts/package_architecture.md`
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/implementation_log.md`
+
+## 2026-05-22: HALY-style Health Outcome Summaries
+
+Reason:
+
+- PMSLT outputs already include `person_years` and `yld`.
+- A lightweight health outcome reporting layer can calculate
+  `halys = person_years - yld` without changing the lifetable engine.
+
+Change:
+
+- Added exported `calculate_halys()` in `R/main-lifetable.R`.
+- Added exported `compare_halys()` in `R/main-lifetable.R`.
+- `calculate_halys()` reuses `summarise_pmslt_results()` internally and
+  supports `overall`, `time_step`, `sex`, `stratum`, exact `age`, and
+  reporting-only `age_band` summaries.
+- HALY summary outputs include `halys`, `person_years`, and `yld`.
+- Integrated disease-total summary columns are preserved when present.
+- `compare_halys()` validates compatible BAU and intervention row structures,
+  then returns `intervention - BAU` differences.
+- HALY comparison outputs include `haly_difference`,
+  `person_years_difference`, and `yld_difference`; integrated disease-total
+  differences are included when both inputs have disease totals.
+- Added beginner-friendly errors when `person_years` or `yld` are missing.
+
+Boundary:
+
+- Reporting/calculation layer only.
+- No DALYs, discounting, age weighting, costs, PSA, uncertainty intervals, or
+  lifetable engine calculations were added or changed.
+
+Validation:
+
+- Added tests for HALY calculation correctness, grouped HALY summaries,
+  age-band HALY summaries, disease-total preservation, HALY comparison
+  summaries, zero differences for identical inputs, and missing-`yld` errors.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`

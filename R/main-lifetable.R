@@ -476,6 +476,117 @@ compare_pmslt_results <- function(bau_results,
   compare_summary_tables(bau_summary, intervention_summary, by)
 }
 
+#' Calculate HALY-style health outcome summaries
+#'
+#' Creates a lightweight health-adjusted life-year style reporting summary from
+#' existing PMSLT outputs. HALYs are calculated as `person_years - yld`. This is
+#' a reporting helper only: it does not add discounting, age weighting, costs,
+#' uncertainty intervals, DALYs, or change the lifetable engine.
+#'
+#' @param results Output from [run_pmslt_lifetable_bau()] or
+#'   [integrate_disease_deltas()] with `person_years` and `yld` columns.
+#' @param by Character vector of grouping variables. Use `"overall"` for one
+#'   ungrouped summary row, or any combination of `"time_step"`, `"sex"`,
+#'   `"stratum"`, `"age"`, and `"age_band"`.
+#'
+#' @return A plain data frame with grouping columns followed by `halys`,
+#'   `person_years`, and `yld`. Integrated disease-total summary columns are
+#'   preserved when they are available.
+#' @export
+#'
+#' @examples
+#' population <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   population = c(1000, 900)
+#' )
+#' mortality <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   mortality_rate = c(0.01, 0.02)
+#' )
+#' morbidity <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   morbidity_rate = c(0.12, 0.15)
+#' )
+#' bau <- run_pmslt_lifetable_bau(population, mortality, morbidity, horizon = 1)
+#' calculate_halys(bau)
+calculate_halys <- function(results,
+                            by = c("overall", "time_step", "sex", "stratum", "age", "age_band")) {
+  by <- if (missing(by)) "overall" else as.character(by)
+  validate_comparison_grouping(by)
+  validate_halys_input(results, "results")
+
+  summary <- summarise_pmslt_results(results, by = by)
+  require_haly_summary_metrics(summary, "results")
+  add_haly_column(summary, by)
+}
+
+#' Compare HALY-style health outcome summaries
+#'
+#' Compares lightweight HALY summaries from compatible BAU and intervention
+#' PMSLT outputs. Differences are calculated as `intervention - BAU`. This is a
+#' reporting helper only and does not add discounting, age weighting, costs,
+#' uncertainty intervals, DALYs, or change the lifetable engine.
+#'
+#' @param bau_results BAU output from [run_pmslt_lifetable_bau()] or
+#'   [integrate_disease_deltas()] with `person_years` and `yld` columns.
+#' @param intervention_results Intervention output with the same `time_step`,
+#'   `age`, `sex`, and `stratum` structure as `bau_results`.
+#' @param by Character vector of grouping variables. Use `"overall"` for one
+#'   ungrouped comparison row, or any combination of `"time_step"`, `"sex"`,
+#'   `"stratum"`, `"age"`, and `"age_band"`.
+#'
+#' @return A plain data frame with grouping columns followed by
+#'   `haly_difference`, `person_years_difference`, and `yld_difference`.
+#'   Integrated disease-total difference columns are included when both inputs
+#'   include disease totals.
+#' @export
+#'
+#' @examples
+#' population <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   population = c(1000, 900)
+#' )
+#' mortality <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   mortality_rate = c(0.01, 0.02)
+#' )
+#' morbidity <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   morbidity_rate = c(0.12, 0.15)
+#' )
+#' bau <- run_pmslt_lifetable_bau(population, mortality, morbidity, horizon = 1)
+#' compare_halys(bau, bau)
+compare_halys <- function(bau_results,
+                          intervention_results,
+                          by = c("overall", "time_step", "sex", "stratum", "age", "age_band")) {
+  by <- if (missing(by)) "overall" else as.character(by)
+  validate_comparison_grouping(by)
+  validate_pmslt_results_for_comparison(bau_results, "bau_results")
+  validate_pmslt_results_for_comparison(intervention_results, "intervention_results")
+  validate_halys_input(bau_results, "bau_results")
+  validate_halys_input(intervention_results, "intervention_results")
+  validate_comparison_structure(bau_results, intervention_results)
+  validate_comparison_metrics(bau_results, intervention_results)
+
+  bau_summary <- calculate_halys(bau_results, by = by)
+  intervention_summary <- calculate_halys(intervention_results, by = by)
+  out <- compare_summary_tables(bau_summary, intervention_summary, by)
+  names(out)[names(out) == "halys_difference"] <- "haly_difference"
+  out
+}
+
 read_lifetable_input <- function(x, label) {
   if (is.character(x) && length(x) == 1) {
     if (!file.exists(x)) {
@@ -989,6 +1100,58 @@ validate_comparison_metrics <- function(bau_results, intervention_results) {
     }
   }
   invisible(TRUE)
+}
+
+validate_halys_input <- function(results, label) {
+  if (!is.data.frame(results)) {
+    stop(
+      "`", label, "` must be a PMSLT result with `person_years` and `yld` columns.",
+      call. = FALSE
+    )
+  }
+  if (!"person_years" %in% names(results)) {
+    stop(
+      "Cannot calculate HALYs for `", label, "` because `person_years` is missing. ",
+      "Use PMSLT lifetable output from `run_pmslt_lifetable_bau()` or `integrate_disease_deltas()`.",
+      call. = FALSE
+    )
+  }
+  if (!"yld" %in% names(results)) {
+    stop(
+      "Cannot calculate HALYs for `", label, "` because `yld` is missing. ",
+      "HALYs are calculated as `person_years - yld`, so use PMSLT output that includes a `yld` column.",
+      call. = FALSE
+    )
+  }
+  require_summary_metrics(results, c("person_years", "yld"), label)
+  invisible(TRUE)
+}
+
+require_haly_summary_metrics <- function(summary, label) {
+  missing_metrics <- setdiff(c("person_years", "yld"), names(summary))
+  if (length(missing_metrics) > 0) {
+    stop(
+      "Cannot calculate HALYs for `", label, "` because summary metric `",
+      missing_metrics[[1]], "` is missing.",
+      call. = FALSE
+    )
+  }
+  require_summary_metrics(summary, c("person_years", "yld"), label)
+  invisible(TRUE)
+}
+
+add_haly_column <- function(summary, by) {
+  group_cols <- if (identical(by, "overall")) character() else by
+  disease_total_cols <- intersect(
+    c("total_disease_cases", "total_disease_deaths", "total_disease_yld"),
+    names(summary)
+  )
+
+  summary$halys <- as.numeric(summary$person_years) - as.numeric(summary$yld)
+  out_cols <- c(group_cols, "halys", "person_years", "yld", disease_total_cols)
+  out <- summary[out_cols]
+  row.names(out) <- NULL
+  as.data.frame(out, stringsAsFactors = FALSE)
 }
 
 comparison_key_values <- function(data, keys) {

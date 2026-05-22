@@ -511,6 +511,41 @@ Implementation note:
   `total_disease_cases`, `total_disease_deaths`, and `total_disease_yld`.
 - Disease-specific long-output contrasts remain optional later work.
 
+## Phase 4.5: HALY-style Health Outcome Reporting
+
+Status: implemented
+
+Todo:
+
+- Add `calculate_halys()`.
+- Add `compare_halys()`.
+- Calculate HALYs as `person_years - yld` using existing PMSLT output
+  summaries.
+- Support overall, time-step, sex, stratum, exact-age, and reporting-only
+  age-band summaries.
+- Preserve integrated disease-total summary columns when present.
+- Require `yld` data and provide beginner-friendly errors when it is missing.
+- Validate compatible BAU and intervention structures before comparison.
+
+Acceptance criteria:
+
+- HALY summaries return `halys`, `person_years`, and `yld`.
+- Comparison summaries return `haly_difference`,
+  `person_years_difference`, and `yld_difference`.
+- Identical inputs return zero differences.
+- No DALYs, discounting, age weighting, costs, PSA, uncertainty intervals, or
+  lifetable engine changes are added.
+
+Implementation note:
+
+- Added exported `calculate_halys(results, by = ...)`.
+- Added exported `compare_halys(bau_results, intervention_results, by = ...)`.
+- Both helpers reuse the existing summary/comparison layer in
+  `R/main-lifetable.R`.
+- `calculate_halys()` requires `person_years` and `yld`, then reports
+  `halys = person_years - yld`.
+- `compare_halys()` calculates differences as `intervention - BAU`.
+
 ## Phase 5: Costs and PSA
 
 Status: later

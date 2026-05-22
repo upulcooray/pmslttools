@@ -18,6 +18,16 @@ lifetable_mortality <- function() {
   )
 }
 
+lifetable_morbidity <- function() {
+  data.frame(
+    age = c(40L, 41L),
+    sex = c("female", "female"),
+    stratum = c("total", "total"),
+    morbidity_rate = c(0.10, 0.20),
+    stringsAsFactors = FALSE
+  )
+}
+
 lifetable_disease_epi <- function(diseases = "CHD") {
   rows <- lapply(diseases, function(disease) {
     data.frame(
@@ -837,4 +847,133 @@ test_that("comparison returns zero deltas for identical inputs", {
   difference_cols <- grep("_difference$", names(comparison), value = TRUE)
   expect_true(length(difference_cols) > 0)
   expect_true(all(unlist(comparison[difference_cols], use.names = FALSE) == 0))
+})
+
+test_that("HALY summaries calculate person-years minus YLD", {
+  bau <- run_pmslt_lifetable_bau(
+    lifetable_population(),
+    lifetable_mortality(),
+    lifetable_morbidity(),
+    horizon = 1
+  )
+
+  halys <- calculate_halys(bau)
+
+  expect_equal(names(halys), c("halys", "person_years", "yld"))
+  expect_equal(halys$person_years, sum(bau$person_years))
+  expect_equal(halys$yld, sum(bau$yld))
+  expect_equal(halys$halys, sum(bau$person_years) - sum(bau$yld))
+})
+
+test_that("HALY summaries can group by sex and stratum", {
+  population <- data.frame(
+    age = c(40L, 40L, 40L),
+    sex = c("female", "male", "female"),
+    stratum = c("low", "low", "high"),
+    population = c(100, 200, 300),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 40L, 40L),
+    sex = c("female", "male", "female"),
+    stratum = c("low", "low", "high"),
+    mortality_rate = c(0.01, 0.02, 0.03),
+    stringsAsFactors = FALSE
+  )
+  morbidity <- data.frame(
+    age = c(40L, 40L, 40L),
+    sex = c("female", "male", "female"),
+    stratum = c("low", "low", "high"),
+    morbidity_rate = c(0.10, 0.20, 0.30),
+    stringsAsFactors = FALSE
+  )
+  bau <- run_pmslt_lifetable_bau(population, mortality, morbidity, horizon = 1)
+
+  halys <- calculate_halys(bau, by = c("sex", "stratum"))
+
+  expect_equal(names(halys), c("sex", "stratum", "halys", "person_years", "yld"))
+  expect_equal(sum(halys$halys), sum(bau$person_years) - sum(bau$yld))
+  expect_equal(
+    halys$halys[halys$sex == "female" & halys$stratum == "high"],
+    bau$person_years[bau$stratum == "high"] - bau$yld[bau$stratum == "high"]
+  )
+})
+
+test_that("HALY summaries can group by configured age bands", {
+  spec <- age_band_summary_spec()
+  morbidity <- age_band_lifetable_mortality()
+  names(morbidity)[names(morbidity) == "mortality_rate"] <- "morbidity_rate"
+  morbidity$morbidity_rate <- seq(0.01, 0.06, by = 0.01)
+  bau <- run_pmslt_lifetable_bau(
+    age_band_lifetable_population(),
+    age_band_lifetable_mortality(),
+    morbidity,
+    spec = spec
+  )
+
+  halys <- calculate_halys(bau, by = "age_band")
+
+  expect_equal(names(halys), c("age_band", "halys", "person_years", "yld"))
+  expect_equal(halys$age_band, c("40-42", "43-45"))
+  expect_equal(sum(halys$halys), sum(bau$person_years) - sum(bau$yld))
+})
+
+test_that("HALY summaries preserve integrated disease totals", {
+  lifetable <- run_pmslt_lifetable_bau(
+    lifetable_population(),
+    lifetable_mortality(),
+    lifetable_morbidity(),
+    horizon = 1
+  )
+  integrated <- integrate_disease_deltas(lifetable, lifetable_disease_epi(c("CHD", "Stroke")))
+
+  halys <- calculate_halys(integrated)
+
+  expect_equal(
+    names(halys),
+    c("halys", "person_years", "yld", "total_disease_cases", "total_disease_deaths", "total_disease_yld")
+  )
+  expect_equal(halys$total_disease_yld, sum(integrated$total_disease_yld))
+})
+
+test_that("HALY comparison returns intervention minus BAU differences", {
+  bau <- run_pmslt_lifetable_bau(
+    lifetable_population(),
+    lifetable_mortality(),
+    lifetable_morbidity(),
+    horizon = 1
+  )
+  intervention <- bau
+  intervention$person_years <- intervention$person_years + c(10, 20)
+  intervention$yld <- intervention$yld - c(1, 2)
+
+  comparison <- compare_halys(bau, intervention)
+
+  expect_equal(names(comparison), c("haly_difference", "person_years_difference", "yld_difference"))
+  expect_equal(comparison$person_years_difference, 30)
+  expect_equal(comparison$yld_difference, -3)
+  expect_equal(comparison$haly_difference, 33)
+})
+
+test_that("HALY comparison returns zero differences for identical inputs", {
+  bau <- run_pmslt_lifetable_bau(
+    lifetable_population(),
+    lifetable_mortality(),
+    lifetable_morbidity(),
+    horizon = 1
+  )
+
+  comparison <- compare_halys(bau, bau, by = "age")
+
+  difference_cols <- grep("_difference$", names(comparison), value = TRUE)
+  expect_true(all(unlist(comparison[difference_cols], use.names = FALSE) == 0))
+})
+
+test_that("HALY calculation requires YLD data", {
+  one_step <- initialize_pmslt_lifetable(lifetable_population(), lifetable_mortality())
+
+  expect_error(
+    calculate_halys(one_step),
+    "Cannot calculate HALYs.*`yld` is missing"
+  )
 })
