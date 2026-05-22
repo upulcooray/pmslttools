@@ -550,3 +550,52 @@ Related artifacts updated:
 - `CODEX.md`
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/implementation_log.md`
+
+## 2026-05-22: Intervention Comparison Summaries
+
+Reason:
+
+- The main PMSLT workflow can now run BAU lifetables, attach disease totals,
+  summarise outputs, and report by age band.
+- The next safe step is to compare completed intervention outputs against BAU
+  outputs without adding new intervention simulation mechanics.
+
+Change:
+
+- Added exported `compare_pmslt_results()` in `R/main-lifetable.R`.
+- The helper validates that both inputs are PMSLT lifetable outputs and that
+  they have matching `time_step`, `age`, `sex`, and `stratum` rows.
+- The helper reuses `summarise_pmslt_results()` internally and returns
+  `intervention - BAU` difference columns.
+- Supported comparison groups are `overall`, `time_step`, `sex`, `stratum`,
+  exact `age`, and reporting-only `age_band`.
+- Difference outputs include `population_difference`, `deaths_difference`,
+  `person_years_difference`, `yld_difference` when available, and integrated
+  disease-total differences when both inputs include disease totals.
+- Added beginner-friendly errors for non-PMSLT inputs, mismatched structures,
+  unsupported grouping variables, and optional metrics present in only one
+  result.
+
+Boundary:
+
+- Reporting layer only.
+- No exact-age engine formulas, disease-delta formulas, intervention
+  mechanics, costs, PSA, HALYs, DALYs, discounting, or disease-specific long
+  contrast outputs were added.
+
+Validation:
+
+- Added tests for overall comparison, age-band comparison, grouped comparison,
+  mismatched structures, disease-total comparison, and zero deltas for
+  identical inputs.
+- `devtools::document()` completed and generated
+  `man/compare_pmslt_results.Rd` plus the NAMESPACE export.
+- `devtools::test()` passed with 315 tests.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`

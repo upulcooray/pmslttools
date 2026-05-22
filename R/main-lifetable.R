@@ -428,6 +428,54 @@ summarise_pmslt_results <- function(results,
   summarise_all_cause_results(results, by)
 }
 
+#' Compare intervention PMSLT results against BAU results
+#'
+#' Creates beginner-friendly intervention-minus-BAU summary tables from two
+#' compatible PMSLT lifetable outputs. This is a reporting helper only: it does
+#' not simulate an intervention or change the exact-age lifetable engine.
+#'
+#' @param bau_results BAU output from [run_pmslt_lifetable_bau()] or
+#'   [integrate_disease_deltas()].
+#' @param intervention_results Intervention output with the same `time_step`,
+#'   `age`, `sex`, and `stratum` structure as `bau_results`.
+#' @param by Character vector of grouping variables. Use `"overall"` for one
+#'   ungrouped comparison row, or any combination of `"time_step"`, `"sex"`,
+#'   `"stratum"`, `"age"`, and `"age_band"`.
+#'
+#' @return A plain data frame with grouping columns followed by difference
+#'   metrics. Differences are calculated as `intervention - BAU`.
+#' @export
+#'
+#' @examples
+#' population <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   population = c(1000, 900)
+#' )
+#' mortality <- data.frame(
+#'   age = c(40L, 41L),
+#'   sex = "female",
+#'   stratum = "total",
+#'   mortality_rate = c(0.01, 0.02)
+#' )
+#' bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1)
+#' compare_pmslt_results(bau, bau)
+compare_pmslt_results <- function(bau_results,
+                                  intervention_results,
+                                  by = c("overall", "time_step", "sex", "stratum", "age", "age_band")) {
+  by <- if (missing(by)) "overall" else as.character(by)
+  validate_comparison_grouping(by)
+  validate_pmslt_results_for_comparison(bau_results, "bau_results")
+  validate_pmslt_results_for_comparison(intervention_results, "intervention_results")
+  validate_comparison_structure(bau_results, intervention_results)
+  validate_comparison_metrics(bau_results, intervention_results)
+
+  bau_summary <- summarise_pmslt_results(bau_results, by = by)
+  intervention_summary <- summarise_pmslt_results(intervention_results, by = by)
+  compare_summary_tables(bau_summary, intervention_summary, by)
+}
+
 read_lifetable_input <- function(x, label) {
   if (is.character(x) && length(x) == 1) {
     if (!file.exists(x)) {
@@ -845,6 +893,148 @@ summarise_numeric_columns <- function(data, group_cols, metric_cols) {
     )
   }
   out <- out[c(group_cols, metric_cols)]
+  row.names(out) <- NULL
+  as.data.frame(out, stringsAsFactors = FALSE)
+}
+
+validate_comparison_grouping <- function(by) {
+  allowed <- c("overall", "time_step", "sex", "stratum", "age", "age_band")
+  bad <- setdiff(by, allowed)
+  if (length(bad) > 0) {
+    stop(
+      "Unknown comparison grouping variable: `", bad[[1]], "`. ",
+      "Use one or more of: ", paste(allowed, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  if ("overall" %in% by && length(by) > 1) {
+    stop("Use `by = \"overall\"` by itself, or choose specific grouping variables such as `time_step`, `sex`, `stratum`, `age`, or `age_band`.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+validate_pmslt_results_for_comparison <- function(results, label) {
+  if (!is.data.frame(results) || !inherits(results, "pmslt_lifetable")) {
+    stop(
+      "`", label, "` must be a PMSLT result returned by `run_pmslt_lifetable_bau()` ",
+      "or `integrate_disease_deltas()`.",
+      call. = FALSE
+    )
+  }
+  required <- c("time_step", "age", "sex", "stratum", "population", "deaths", "person_years")
+  require_columns(results, required, label)
+  validate_lifetable_age(results$age, label)
+  time_step <- suppressWarnings(as.numeric(results$time_step))
+  if (any(is.na(time_step)) ||
+      any(abs(time_step - round(time_step)) > .Machine$double.eps^0.5)) {
+    stop("`time_step` in `", label, "` must contain non-missing whole numbers.", call. = FALSE)
+  }
+  if (any(!stats::complete.cases(results[c("time_step", "age", "sex", "stratum")]))) {
+    stop("`", label, "` has missing time_step, age, sex, or stratum values.", call. = FALSE)
+  }
+  duplicate_key <- duplicated(results[c("time_step", "age", "sex", "stratum")])
+  if (any(duplicate_key)) {
+    first <- results[which(duplicate_key)[[1]], c("time_step", "age", "sex", "stratum"), drop = FALSE]
+    stop(
+      "`", label, "` must have only one row per time_step, age, sex, and stratum. ",
+      "First duplicate: age=", first$age[[1]],
+      ", sex=", first$sex[[1]],
+      ", stratum=", first$stratum[[1]],
+      ", time_step=", first$time_step[[1]], ".",
+      call. = FALSE
+    )
+  }
+  metric_cols <- intersect(
+    c("population", "deaths", "person_years", "yld", "total_disease_cases", "total_disease_deaths", "total_disease_yld"),
+    names(results)
+  )
+  require_summary_metrics(results, metric_cols, label)
+  invisible(TRUE)
+}
+
+validate_comparison_structure <- function(bau_results, intervention_results) {
+  keys <- c("time_step", "age", "sex", "stratum")
+  bau_keys <- comparison_key_values(bau_results, keys)
+  intervention_keys <- comparison_key_values(intervention_results, keys)
+  missing_in_intervention <- bau_results[!bau_keys %in% intervention_keys, keys, drop = FALSE]
+  if (nrow(missing_in_intervention) > 0) {
+    stop(
+      "`intervention_results` is missing a row found in `bau_results`. First missing key: ",
+      format_comparison_key(missing_in_intervention[1, , drop = FALSE]),
+      call. = FALSE
+    )
+  }
+  extra_in_intervention <- intervention_results[!intervention_keys %in% bau_keys, keys, drop = FALSE]
+  if (nrow(extra_in_intervention) > 0) {
+    stop(
+      "`intervention_results` has a row that is not in `bau_results`. First extra key: ",
+      format_comparison_key(extra_in_intervention[1, , drop = FALSE]),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+validate_comparison_metrics <- function(bau_results, intervention_results) {
+  optional_metrics <- c("yld", "total_disease_cases", "total_disease_deaths", "total_disease_yld")
+  for (metric in optional_metrics) {
+    in_bau <- metric %in% names(bau_results)
+    in_intervention <- metric %in% names(intervention_results)
+    if (!identical(in_bau, in_intervention)) {
+      stop(
+        "Cannot compare `", metric, "` because it is present in only one result. ",
+        "Compare two BAU-style results or two results after the same reporting integration step.",
+        call. = FALSE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+comparison_key_values <- function(data, keys) {
+  do.call(paste, c(data[keys], sep = "\r"))
+}
+
+format_comparison_key <- function(data) {
+  paste0(
+    "age=", data$age[[1]],
+    ", sex=", data$sex[[1]],
+    ", stratum=", data$stratum[[1]],
+    ", time_step=", data$time_step[[1]]
+  )
+}
+
+compare_summary_tables <- function(bau_summary, intervention_summary, by) {
+  group_cols <- if (identical(by, "overall")) character() else by
+  metric_cols <- setdiff(names(bau_summary), group_cols)
+  if (!identical(names(bau_summary), names(intervention_summary))) {
+    stop("Cannot compare summaries because BAU and intervention summaries have different metric columns.", call. = FALSE)
+  }
+  if (length(group_cols) > 0) {
+    bau_summary$.pmslt_group_key <- comparison_key_values(bau_summary, group_cols)
+    intervention_summary$.pmslt_group_key <- comparison_key_values(intervention_summary, group_cols)
+    missing_groups <- bau_summary[!bau_summary$.pmslt_group_key %in% intervention_summary$.pmslt_group_key, group_cols, drop = FALSE]
+    if (nrow(missing_groups) > 0) {
+      stop("Cannot compare summaries because an intervention summary group is missing.", call. = FALSE)
+    }
+    extra_groups <- intervention_summary[!intervention_summary$.pmslt_group_key %in% bau_summary$.pmslt_group_key, group_cols, drop = FALSE]
+    if (nrow(extra_groups) > 0) {
+      stop("Cannot compare summaries because an intervention summary group is not present in BAU.", call. = FALSE)
+    }
+    intervention_summary <- intervention_summary[
+      match(bau_summary$.pmslt_group_key, intervention_summary$.pmslt_group_key),
+      ,
+      drop = FALSE
+    ]
+    bau_summary$.pmslt_group_key <- NULL
+    intervention_summary$.pmslt_group_key <- NULL
+  }
+
+  out <- bau_summary[group_cols]
+  for (metric in metric_cols) {
+    out[[paste0(metric, "_difference")]] <-
+      as.numeric(intervention_summary[[metric]]) - as.numeric(bau_summary[[metric]])
+  }
   row.names(out) <- NULL
   as.data.frame(out, stringsAsFactors = FALSE)
 }

@@ -31,6 +31,8 @@ This first scaffold includes:
 - `summarise_pmslt_results()` to inspect BAU all-cause and disease-delta
   outputs overall or by exact `time_step`, `age`, `sex`, `stratum`, and
   `disease`, or by the reporting `age_band` labels stored in `pmslt_spec()`.
+- `compare_pmslt_results()` to compare compatible intervention PMSLT outputs
+  against BAU outputs as simple `intervention - BAU` reporting deltas.
 
 Full simulation engine functions will be migrated from the existing PMSLT
 template in later modules.
@@ -137,6 +139,11 @@ disease_attached <- integrate_disease_deltas(bau, disease_epi)
 summarise_pmslt_results(disease_attached)
 summarise_pmslt_results(disease_attached, by = c("disease", "age"))
 summarise_pmslt_results(disease_attached, by = c("disease", "age_band"))
+
+intervention_attached <- disease_attached
+intervention_attached$population <- intervention_attached$population * 0.99
+compare_pmslt_results(disease_attached, intervention_attached)
+compare_pmslt_results(disease_attached, intervention_attached, by = "age_band")
 ```
 
 `initialize_pmslt_lifetable()` runs one deterministic BAU time step.
@@ -155,6 +162,11 @@ metrics. Disease-specific summaries use the `disease_deltas` attribute.
 Age-band summaries use the age labels in `spec$ages`, so run the lifetable with
 `spec = pmslt_spec(..., ages = age_bands(...))` when you need grouped age
 reporting.
+`compare_pmslt_results()` reuses these summaries to report
+`population_difference`, `deaths_difference`, `person_years_difference`,
+`yld_difference` when available, and integrated disease-total differences when
+both inputs include disease totals. Both inputs must have matching
+`time_step`, `age`, `sex`, and `stratum` rows.
 
 These all-cause lifetable functions do not apply interventions, PIFs, direct
 effects, costs, PSA, births, migration, or entrants yet. Disease-attributable

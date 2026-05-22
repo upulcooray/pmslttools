@@ -391,6 +391,7 @@ Public functions:
 - `run_pmslt_lifetable_bau()`
 - `integrate_disease_deltas()`
 - `summarise_pmslt_results()`
+- `compare_pmslt_results()`
 
 Source template concepts:
 
@@ -410,6 +411,9 @@ Responsibilities:
 - Summarise BAU all-cause and disease-delta outputs overall or by exact
   `time_step`, `age`, `sex`, `stratum`, `disease`, and reporting-only
   `age_band`.
+- Compare compatible intervention outputs against BAU outputs as simple
+  `intervention - BAU` reporting deltas overall or by `time_step`, `sex`,
+  `stratum`, exact `age`, and reporting-only `age_band`.
 - Run BAU and intervention population lifetables.
 - Integrate disease-specific mortality and morbidity deltas from the disease
   module.
@@ -448,7 +452,11 @@ Ageing and rate rules:
 - `summarise_pmslt_results()` can aggregate exact ages into `age_band` labels
   from `attr(results, "spec")$ages`. This is reporting-only; exact
   single-year age remains the engine state.
-- `summarise_pmslt_results()` does not create intervention contrasts yet.
+- `compare_pmslt_results()` reuses the summary layer and validates that BAU
+  and intervention results have matching `time_step`, `age`, `sex`, and
+  `stratum` rows before calculating differences.
+- Disease-specific long-output contrasts remain later work; this slice only
+  compares all-cause metrics and integrated disease-total columns.
 
 ## Layer 8: Planned Uncertainty, Costs, and Equity Extensions
 

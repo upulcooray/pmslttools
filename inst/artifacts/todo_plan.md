@@ -451,7 +451,6 @@ Todo:
   - HALYs/DALYs
   - deaths avoided
   - morbidity changes
-  - intervention contrasts
   - stratified differences
 
 Acceptance criteria:
@@ -476,6 +475,41 @@ Implementation note:
 - Disease-specific summaries can group by both `disease` and `age_band`.
 - Age-band reporting is an aggregation layer only; exact integer age remains
   the engine state.
+
+## Phase 4.4: Intervention Comparison Reporting
+
+Status: implemented
+
+Todo:
+
+- Add `compare_pmslt_results()`.
+- Validate that BAU and intervention results are PMSLT lifetable outputs.
+- Validate matching `time_step`, `age`, `sex`, and `stratum` structure before
+  comparing summaries.
+- Return simple `intervention - BAU` deltas for all-cause metrics and
+  integrated disease-total metrics when present.
+- Support overall, exact-age, age-band, time-step, sex, and stratum reporting
+  groups.
+
+Acceptance criteria:
+
+- Compatible BAU and intervention outputs compare overall and by grouped
+  summaries.
+- Age-band comparison remains a reporting aggregation using `spec$ages`.
+- Mismatched structures fail with a clear beginner-friendly error.
+- Identical inputs return zero deltas.
+- No intervention simulation mechanics, costs, PSA, HALYs, DALYs, discounting,
+  or engine changes are added.
+
+Implementation note:
+
+- Added exported `compare_pmslt_results(bau_results, intervention_results, by = ...)`.
+- Differences are named with a `_difference` suffix, for example
+  `population_difference`, `deaths_difference`,
+  `person_years_difference`, and `yld_difference`.
+- Integrated disease totals are compared when both inputs include
+  `total_disease_cases`, `total_disease_deaths`, and `total_disease_yld`.
+- Disease-specific long-output contrasts remain optional later work.
 
 ## Phase 5: Costs and PSA
 

@@ -724,3 +724,117 @@ test_that("invalid summary grouping variable gives clear error", {
     "Unknown summary grouping variable"
   )
 })
+
+test_that("overall comparison returns intervention minus BAU deltas", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  intervention <- bau
+  intervention$population <- intervention$population - c(10, 20)
+  intervention$deaths <- intervention$deaths - c(1, 2)
+  intervention$person_years <- intervention$person_years - c(9, 18)
+  intervention$yld <- intervention$yld + c(0.5, 1.5)
+
+  comparison <- compare_pmslt_results(bau, intervention)
+
+  expect_equal(
+    names(comparison),
+    c("population_difference", "deaths_difference", "person_years_difference", "yld_difference")
+  )
+  expect_equal(comparison$population_difference, -30)
+  expect_equal(comparison$deaths_difference, -3)
+  expect_equal(comparison$person_years_difference, -27)
+  expect_equal(comparison$yld_difference, 2)
+})
+
+test_that("age-band comparison aggregates reporting differences", {
+  spec <- age_band_summary_spec()
+  bau <- run_pmslt_lifetable_bau(
+    age_band_lifetable_population(),
+    age_band_lifetable_mortality(),
+    spec = spec
+  )
+  intervention <- bau
+  intervention$population <- intervention$population - c(1, 2, 3, 4, 5, 6)
+  intervention$deaths <- intervention$deaths - 1
+  intervention$person_years <- intervention$person_years - 2
+  intervention$yld <- intervention$yld
+
+  comparison <- compare_pmslt_results(bau, intervention, by = "age_band")
+
+  expect_equal(names(comparison), c("age_band", "population_difference", "deaths_difference", "person_years_difference", "yld_difference"))
+  expect_equal(comparison$age_band, c("40-42", "43-45"))
+  expect_equal(comparison$population_difference, c(-6, -15))
+  expect_equal(comparison$deaths_difference, c(-3, -3))
+  expect_equal(comparison$person_years_difference, c(-6, -6))
+})
+
+test_that("comparison can group by sex and stratum", {
+  population <- data.frame(
+    age = c(40L, 40L, 40L),
+    sex = c("female", "male", "female"),
+    stratum = c("low", "low", "high"),
+    population = c(100, 200, 300),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 40L, 40L),
+    sex = c("female", "male", "female"),
+    stratum = c("low", "low", "high"),
+    mortality_rate = c(0.01, 0.02, 0.03),
+    stringsAsFactors = FALSE
+  )
+  bau <- run_pmslt_lifetable_bau(population, mortality, horizon = 1)
+  intervention <- bau
+  intervention$population <- intervention$population + c(1, 2, 3)
+  intervention$deaths <- intervention$deaths
+  intervention$person_years <- intervention$person_years
+  intervention$yld <- intervention$yld
+
+  comparison <- compare_pmslt_results(bau, intervention, by = c("sex", "stratum"))
+
+  expect_equal(names(comparison), c("sex", "stratum", "population_difference", "deaths_difference", "person_years_difference", "yld_difference"))
+  expect_equal(sum(comparison$population_difference), 6)
+  expect_equal(comparison$population_difference[comparison$sex == "female" & comparison$stratum == "high"], 1)
+  expect_equal(comparison$population_difference[comparison$sex == "female" & comparison$stratum == "low"], 2)
+  expect_equal(comparison$population_difference[comparison$sex == "male" & comparison$stratum == "low"], 3)
+})
+
+test_that("mismatched comparison structures fail clearly", {
+  bau <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  intervention <- bau[1, , drop = FALSE]
+
+  expect_error(
+    compare_pmslt_results(bau, intervention),
+    "missing a row found in `bau_results`"
+  )
+})
+
+test_that("disease totals compare correctly", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  bau <- integrate_disease_deltas(lifetable, lifetable_disease_epi(c("CHD", "Stroke")))
+  intervention <- bau
+  intervention$total_disease_cases <- intervention$total_disease_cases - c(10, 20)
+  intervention$total_disease_deaths <- intervention$total_disease_deaths - c(1, 2)
+  intervention$total_disease_yld <- intervention$total_disease_yld + c(3, 4)
+
+  comparison <- compare_pmslt_results(bau, intervention)
+
+  expect_true(all(c(
+    "total_disease_cases_difference",
+    "total_disease_deaths_difference",
+    "total_disease_yld_difference"
+  ) %in% names(comparison)))
+  expect_equal(comparison$total_disease_cases_difference, -30)
+  expect_equal(comparison$total_disease_deaths_difference, -3)
+  expect_equal(comparison$total_disease_yld_difference, 7)
+})
+
+test_that("comparison returns zero deltas for identical inputs", {
+  lifetable <- run_pmslt_lifetable_bau(lifetable_population(), lifetable_mortality(), horizon = 1)
+  integrated <- integrate_disease_deltas(lifetable, lifetable_disease_epi(c("CHD", "Stroke")))
+
+  comparison <- compare_pmslt_results(integrated, integrated, by = "age")
+
+  difference_cols <- grep("_difference$", names(comparison), value = TRUE)
+  expect_true(length(difference_cols) > 0)
+  expect_true(all(unlist(comparison[difference_cols], use.names = FALSE) == 0))
+})

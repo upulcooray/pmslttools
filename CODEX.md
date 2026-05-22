@@ -53,6 +53,9 @@ The package should guide users through:
    reporting outputs.
 10. Age-band summaries are reporting-only and must come from `spec$ages`; do
     not change lifetable age calculations to implement grouped reporting.
+11. Intervention comparisons are reporting-only in this slice. Use
+    `compare_pmslt_results()` for compatible completed outputs; do not add new
+    intervention simulation mechanics here.
 
 ## Current Public API
 
@@ -81,6 +84,7 @@ The package should guide users through:
 - `run_pmslt_lifetable_bau()`
 - `integrate_disease_deltas()`
 - `summarise_pmslt_results()`
+- `compare_pmslt_results()`
 
 ## Important Files
 
@@ -196,6 +200,9 @@ summarise_pmslt_results(disease_attached, by = c("disease", "age_band"))
 7. `summarise_pmslt_results()` supports exact-age summaries and reporting-only
    `age_band` summaries when the lifetable result has a `pmslt_spec` with
    age bands attached.
+8. `compare_pmslt_results()` compares compatible PMSLT outputs against BAU
+   outputs as `intervention - BAU` deltas overall or by `time_step`, `sex`,
+   `stratum`, exact `age`, or reporting `age_band`.
 
 ## Next Best Tasks
 
