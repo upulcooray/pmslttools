@@ -12,6 +12,7 @@ needed, and prepare a clear path toward DisMod processing and PMSLT simulation.
 This first scaffold includes:
 
 - `pmslt_spec()` to define a model from minimal information.
+- `next_pmslt_step()` to ask what to do next in the workflow.
 - `age_bands()` to create standard age-group definitions.
 - `draft_input_templates()` to generate beginner-friendly CSV templates.
 - `validate_raw_inputs()` to check completed raw CSV templates before
@@ -78,6 +79,16 @@ conditional, or optional. After filling the templates, run
 guidance, and access to the full issue table before moving on to DisMod-lite.
 For lower-level control, use `validate_raw_inputs()` to get the issue table and
 `summarise_raw_input_issues()` to summarise it.
+
+## What do I do next?
+
+```r
+next_pmslt_step()
+next_pmslt_step("raw_inputs")
+
+readiness <- check_raw_input_readiness(input_dir, spec)
+next_pmslt_step(object = readiness)
+```
 
 ## Mock DisMod demonstration
 

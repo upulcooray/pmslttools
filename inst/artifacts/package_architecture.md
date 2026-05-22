@@ -204,6 +204,31 @@ Design rule:
 - Raw validation should keep going wherever possible and return a complete
   issue table instead of stopping after the first problem.
 
+## Layer 3a: Workflow Navigation
+
+Files:
+
+- `R/workflow-navigation.R`
+
+Public functions:
+
+- `next_pmslt_step()`
+
+Responsibilities:
+
+- Provide beginner-friendly next-step guidance without running modelling code.
+- Support explicit workflow stages from model specification through HALY
+  reporting.
+- Conservatively infer stages from stable pmslttools S3 classes such as
+  `pmslt_spec`, `raw_input_readiness_check`, and
+  `summarised_raw_input_issues`.
+
+Boundary:
+
+- This layer is guidance only. It must not change raw inputs, schemas,
+  DisMod-lite behaviour, PMSLT-ready disease inputs, lifetable calculations, or
+  reporting semantics.
+
 ## Layer 4: Missing Parameter Diagnostics
 
 Files:
@@ -551,6 +576,7 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 - `initialize_pmslt_lifetable()`
 - `mock_dismod_output()`
 - `mock_pmslt_spec()`
+- `next_pmslt_step()`
 - `plot_dismod_age_curve()`
 - `plot_dismod_corrections()`
 - `prepare_pmslt_disease_inputs()`

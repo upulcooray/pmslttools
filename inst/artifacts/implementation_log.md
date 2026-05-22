@@ -611,6 +611,46 @@ Related artifacts updated:
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/implementation_log.md`
 
+## 2026-05-22: Workflow Next-Step Guidance
+
+Reason:
+
+- The package now has enough raw-input, DisMod-lite, PMSLT-ready disease input,
+  intervention, lifetable, and HALY helpers that beginners need a simple way to
+  ask what to do next.
+
+Change:
+
+- Added exported `next_pmslt_step(stage = NULL, object = NULL)` in
+  `R/workflow-navigation.R`.
+- Added compact S3 print method `print.pmslt_next_step()`.
+- Supported explicit stages: `spec`, `templates`, `raw_inputs`,
+  `raw_validation`, `dismod_lite`, `pmslt_disease_inputs`,
+  `disease_lifetable`, `interventions`, and `halys`.
+- Added conservative stage inference for `pmslt_spec`,
+  `raw_input_readiness_check`, and `summarised_raw_input_issues` objects.
+
+Boundary:
+
+- Guidance only.
+- No modelling functionality, schemas, validators, DisMod-lite behaviour,
+  PMSLT-ready disease inputs, lifetable calculations, or reporting semantics
+  were changed.
+
+Validation:
+
+- Added focused tests for no-argument guidance, all explicit stages,
+  unsupported stages, explicit-stage precedence, object inference, and print
+  behaviour.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+
 ## 2026-05-22: HALY-style Health Outcome Summaries
 
 Reason:

@@ -63,6 +63,7 @@ The package should guide users through:
 ## Current Public API
 
 - `pmslt_spec()`
+- `next_pmslt_step()`
 - `age_bands()`
 - `validate_spec()`
 - `draft_input_templates()`
@@ -97,6 +98,7 @@ The package should guide users through:
 ## Important Files
 
 - `R/spec.R`: model specification, age bands, spec validation.
+- `R/workflow-navigation.R`: beginner-facing workflow next-step guidance.
 - `R/templates.R`: raw CSV template generation.
 - `R/input-guide.R`: markdown guide and column dictionary generation.
 - `R/diagnostics.R`: missing disease parameter diagnostics.
@@ -127,6 +129,7 @@ spec <- pmslt_spec(
 )
 
 draft_input_templates(spec, "inputs_raw")
+next_pmslt_step("raw_inputs")
 mock_dismod_output("inputs_raw")
 
 results <- run_pmslt_interventions(

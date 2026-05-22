@@ -613,6 +613,20 @@ Acceptance criteria:
 
 Status: ongoing
 
+### 6.0 Add workflow next-step guidance
+
+Status: completed
+
+Completed:
+
+- Added exported `next_pmslt_step(stage = NULL, object = NULL)`.
+- Supported beginner workflow stages from `spec` through `halys`.
+- Added conservative S3 class inference for `pmslt_spec`,
+  `raw_input_readiness_check`, and `summarised_raw_input_issues`.
+- Kept the helper guidance-only; no raw schemas, DisMod-lite behaviour,
+  PMSLT-ready disease inputs, lifetable calculations, or reporting semantics
+  were changed.
+
 ### 6.1 Add vignette
 
 Todo:
