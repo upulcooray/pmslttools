@@ -71,6 +71,23 @@ expect_validation_columns <- function(issues) {
   )
 }
 
+raw_issue_table <- function(file = character(),
+                            row = integer(),
+                            column = character(),
+                            severity = character(),
+                            message = character(),
+                            suggested_fix = character()) {
+  data.frame(
+    file = file,
+    row = as.integer(row),
+    column = column,
+    severity = severity,
+    message = message,
+    suggested_fix = suggested_fix,
+    stringsAsFactors = FALSE
+  )
+}
+
 test_that("valid minimal raw templates return a zero-row issue table", {
   spec <- valid_direct_spec()
   input_dir <- write_valid_raw_inputs(spec)
@@ -324,4 +341,123 @@ test_that("unexpected duplicate files are reported", {
   issues <- validate_raw_inputs(input_dir, spec)
 
   expect_true(any(issues$file == "01_population copy.csv" & grepl("duplicate", issues$message)))
+})
+
+test_that("summarise_raw_input_issues handles empty issue tables", {
+  summary <- summarise_raw_input_issues(raw_issue_table())
+
+  expect_s3_class(summary, "summarised_raw_input_issues")
+  expect_true(summary$can_proceed)
+  expect_equal(summary$issue_count, 0)
+  expect_equal(summary$error_count, 0)
+  expect_equal(summary$warning_count, 0)
+  expect_equal(nrow(summary$summary_by_file), 0)
+  expect_match(summary$next_step, "proceed")
+})
+
+test_that("summarise_raw_input_issues allows warning-only results", {
+  issues <- raw_issue_table(
+    file = "01_population.csv",
+    row = NA_integer_,
+    column = "extra_comment",
+    severity = "warning",
+    message = "Column is not part of this raw input template.",
+    suggested_fix = "Review the column."
+  )
+
+  summary <- summarise_raw_input_issues(issues)
+
+  expect_true(summary$can_proceed)
+  expect_equal(summary$issue_count, 1)
+  expect_equal(summary$error_count, 0)
+  expect_equal(summary$warning_count, 1)
+  expect_match(summary$next_step, "review the warnings", ignore.case = TRUE)
+})
+
+test_that("summarise_raw_input_issues blocks progress when errors are present", {
+  issues <- raw_issue_table(
+    file = "01_population.csv",
+    row = 1L,
+    column = "initial_population",
+    severity = "error",
+    message = "Required value is blank.",
+    suggested_fix = "Enter a value."
+  )
+
+  summary <- summarise_raw_input_issues(issues)
+
+  expect_false(summary$can_proceed)
+  expect_equal(summary$error_count, 1)
+  expect_match(summary$next_step, "Fix the error issues before proceeding")
+})
+
+test_that("summarise_raw_input_issues counts mixed errors and warnings", {
+  issues <- raw_issue_table(
+    file = c("01_population.csv", "01_population.csv", "02_all_cause_mortality.csv"),
+    row = c(1L, NA_integer_, 2L),
+    column = c("initial_population", "extra_comment", "acmr_BAU"),
+    severity = c("error", "warning", "error"),
+    message = c("Blank value.", "Extra column.", "Non-numeric value."),
+    suggested_fix = c("Fill value.", "Review column.", "Enter a number.")
+  )
+
+  summary <- summarise_raw_input_issues(issues)
+
+  expect_false(summary$can_proceed)
+  expect_equal(summary$issue_count, 3)
+  expect_equal(summary$error_count, 2)
+  expect_equal(summary$warning_count, 1)
+})
+
+test_that("summarise_raw_input_issues groups counts by file and severity", {
+  issues <- raw_issue_table(
+    file = c("01_population.csv", "01_population.csv", "02_all_cause_mortality.csv"),
+    row = c(1L, NA_integer_, 2L),
+    column = c("initial_population", "extra_comment", "acmr_BAU"),
+    severity = c("error", "warning", "warning"),
+    message = c("Blank value.", "Extra column.", "Extra column."),
+    suggested_fix = c("Fill value.", "Review column.", "Review column.")
+  )
+
+  summary_by_file <- summarise_raw_input_issues(issues)$summary_by_file
+  population <- summary_by_file[summary_by_file$file == "01_population.csv", ]
+  mortality <- summary_by_file[summary_by_file$file == "02_all_cause_mortality.csv", ]
+
+  expect_equal(population$issue_count, 2)
+  expect_equal(population$error_count, 1)
+  expect_equal(population$warning_count, 1)
+  expect_equal(mortality$issue_count, 1)
+  expect_equal(mortality$error_count, 0)
+  expect_equal(mortality$warning_count, 1)
+})
+
+test_that("summarise_raw_input_issues gives a clear error for malformed input", {
+  malformed <- data.frame(
+    file = "01_population.csv",
+    severity = "error",
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    summarise_raw_input_issues(malformed),
+    "missing required column",
+    fixed = TRUE
+  )
+})
+
+test_that("print.summarised_raw_input_issues produces compact output", {
+  issues <- raw_issue_table(
+    file = "01_population.csv",
+    row = 1L,
+    column = "initial_population",
+    severity = "error",
+    message = "Required value is blank.",
+    suggested_fix = "Enter a value."
+  )
+
+  summary <- summarise_raw_input_issues(issues)
+
+  expect_output(print(summary), "Raw input validation summary")
+  expect_output(print(summary), "Can proceed: no")
+  expect_output(print(summary), "Files with issues")
 })

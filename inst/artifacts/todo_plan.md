@@ -230,6 +230,9 @@ Implementation note:
   `file`, `row`, `column`, `severity`, `message`, `suggested_fix`.
 - Added a `print.pmslt_validation_issues()` method with issue counts by
   severity and a short preview.
+- Added exported `summarise_raw_input_issues()` with a compact can-proceed
+  signal, error and warning counts, file-level counts, and beginner-facing
+  next-step guidance.
 
 ## Phase 3: Improve DisMod Integration
 

@@ -172,6 +172,7 @@ Files:
 Public functions:
 
 - `validate_raw_inputs()`
+- `summarise_raw_input_issues()`
 
 Responsibilities:
 
@@ -181,6 +182,8 @@ Responsibilities:
   requirement levels, validation types, and allowed values.
 - Accumulate beginner-readable issues in a stable table with columns:
   `file`, `row`, `column`, `severity`, `message`, and `suggested_fix`.
+- Summarise validation issues into a compact can-proceed signal, next-step
+  guidance, and file-level issue counts.
 - Check file existence, duplicate files, required columns, unexpected columns,
   duplicated column names, missing required values, type coercion, duplicate
   identifying rows, allowed generated values when a `pmslt_spec` is supplied,

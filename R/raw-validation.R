@@ -186,6 +186,138 @@ print.pmslt_validation_issues <- function(x, ...) {
   invisible(x)
 }
 
+#' Summarise raw input validation issues
+#'
+#' Converts the issue table returned by [validate_raw_inputs()] into a compact
+#' beginner-facing summary. This helper does not re-run validation and does not
+#' modify any files.
+#'
+#' @param issues A validation issue data frame returned by
+#'   [validate_raw_inputs()]. It must contain `file`, `row`, `column`,
+#'   `severity`, `message`, and `suggested_fix`.
+#'
+#' @return A list with class `summarised_raw_input_issues` containing
+#'   `can_proceed`, `issue_count`, `error_count`, `warning_count`,
+#'   `files_with_issues`, `summary_by_file`, and `next_step`.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' issues <- validate_raw_inputs("inputs_raw", spec)
+#' summarise_raw_input_issues(issues)
+#' }
+summarise_raw_input_issues <- function(issues) {
+  validate_issue_table_format(issues)
+  issues <- as.data.frame(issues, stringsAsFactors = FALSE)
+
+  issue_count <- nrow(issues)
+  severity <- normalise_issue_severity(issues$severity)
+  error_count <- sum(severity == "error", na.rm = TRUE)
+  warning_count <- sum(severity == "warning", na.rm = TRUE)
+  can_proceed <- error_count == 0
+
+  summary_by_file <- summarise_issues_by_file(issues, severity)
+  files_with_issues <- summary_by_file$file
+
+  next_step <- raw_issue_next_step(issue_count, error_count, warning_count)
+
+  out <- list(
+    can_proceed = can_proceed,
+    issue_count = issue_count,
+    error_count = error_count,
+    warning_count = warning_count,
+    files_with_issues = files_with_issues,
+    summary_by_file = summary_by_file,
+    next_step = next_step
+  )
+  class(out) <- "summarised_raw_input_issues"
+  out
+}
+
+validate_issue_table_format <- function(issues) {
+  if (!is.data.frame(issues)) {
+    stop(
+      "`issues` must be the issue table returned by validate_raw_inputs().",
+      call. = FALSE
+    )
+  }
+
+  missing_columns <- setdiff(validation_issue_columns(), names(issues))
+  if (length(missing_columns) > 0) {
+    stop(
+      "`issues` is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      ". Use the data frame returned by validate_raw_inputs().",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+normalise_issue_severity <- function(severity) {
+  tolower(trimws(as.character(severity)))
+}
+
+summarise_issues_by_file <- function(issues, severity) {
+  if (nrow(issues) == 0) {
+    return(data.frame(
+      file = character(),
+      issue_count = integer(),
+      error_count = integer(),
+      warning_count = integer(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  file <- as.character(issues$file)
+  file[is.na(file) | !nzchar(trimws(file))] <- "(input folder)"
+  files <- sort(unique(file))
+
+  rows <- lapply(files, function(this_file) {
+    in_file <- file == this_file
+    data.frame(
+      file = this_file,
+      issue_count = sum(in_file),
+      error_count = sum(in_file & severity == "error", na.rm = TRUE),
+      warning_count = sum(in_file & severity == "warning", na.rm = TRUE),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  out
+}
+
+raw_issue_next_step <- function(issue_count, error_count, warning_count) {
+  if (issue_count == 0) {
+    return("No raw input issues were found. You can proceed to the next workflow step.")
+  }
+  if (error_count > 0) {
+    return("Fix the error issues before proceeding to DisMod-lite or PMSLT-ready input preparation.")
+  }
+  if (warning_count > 0) {
+    return("You can proceed, but review the warnings first to make sure the raw inputs are intentional.")
+  }
+  "Review the validation issues before proceeding."
+}
+
+#' @export
+print.summarised_raw_input_issues <- function(x, ...) {
+  cat("Raw input validation summary\n")
+  cat("Can proceed: ", if (isTRUE(x$can_proceed)) "yes" else "no", "\n", sep = "")
+  cat("Issues: ", x$issue_count, " (errors: ", x$error_count, ", warnings: ", x$warning_count, ")\n", sep = "")
+  cat("Next step: ", x$next_step, "\n", sep = "")
+
+  if (nrow(x$summary_by_file) > 0) {
+    cat("\nFiles with issues:\n")
+    print.data.frame(x$summary_by_file, row.names = FALSE)
+  }
+
+  invisible(x)
+}
+
 expected_raw_template_names <- function(input_dir, spec, schemas) {
   if (!is.null(spec)) {
     return(names(build_input_templates(spec)))

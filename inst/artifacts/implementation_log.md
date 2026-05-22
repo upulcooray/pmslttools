@@ -125,6 +125,10 @@ Change:
   `append_validation_issue()`, and `append_validation_issues()`.
 - Added S3 class `pmslt_validation_issues` and
   `print.pmslt_validation_issues()`.
+- Added exported `summarise_raw_input_issues()` with S3 print method
+  `print.summarised_raw_input_issues()` so beginners can see whether they can
+  proceed, how many errors and warnings remain, which files need review, and
+  the recommended next step.
 - The validator checks:
   - missing expected raw CSV files;
   - unexpected duplicate CSV copies;

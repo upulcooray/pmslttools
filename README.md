@@ -61,6 +61,7 @@ spec <- pmslt_spec(
 
 draft_input_templates(spec, output_dir = "inputs_raw")
 issues <- validate_raw_inputs("inputs_raw", spec)
+summarise_raw_input_issues(issues)
 dismod_slove("inputs_raw")
 dismod_slove("inputs_raw", uncertainty = TRUE, draws = 2000, seed = 1)
 ```
@@ -72,7 +73,8 @@ student needs to fill before DisMod processing. The output also includes
 conditional, or optional. After filling the templates, run
 `validate_raw_inputs()` to get a single issue table covering missing files,
 missing values, type problems, unexpected columns, duplicated rows, and
-specification mismatches before moving on to DisMod-lite.
+specification mismatches. Then use `summarise_raw_input_issues()` for a compact
+can-proceed signal and file-level counts before moving on to DisMod-lite.
 
 ## Mock DisMod demonstration
 
