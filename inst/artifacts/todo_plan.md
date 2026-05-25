@@ -1,6 +1,6 @@
 # pmslttools Todo Plan
 
-Last updated: 2026-05-22
+Last updated: 2026-05-25
 
 ## Guiding Priorities
 
@@ -243,22 +243,75 @@ Status: high priority
 
 ### 3.1 Separate teaching DisMod from real DisMod adapters
 
+Status: ready for implementation.
+
 Problem:
 
 - `dismod_slove()` and `mock_dismod_output()` are teaching tools, not real
   DisMod-MR integration.
+- The package needs a real DisMod-MR adapter for a vertical workflow slice:
+  raw PMSLT templates to DisMod-MR files, external DisMod-MR output, canonical
+  `pmslt_disease_epi.csv`, then downstream PMSLT modules.
 
 Todo:
 
 - Keep `dismod_slove()` as a local teaching/diagnostic tool.
-- Add planned functions:
+- Add a new real adapter module, planned as `R/dismod-mr-adapter.R`.
+- Add planned exported functions:
   - `prepare_dismod_mr_inputs()`
   - `read_dismod_mr_outputs()`
-  - `validate_dismod_outputs()`
+  - `validate_dismod_mr_outputs()`
+  - `prepare_pmslt_disease_inputs_from_dismod_mr()`
+- Keep this first adapter file-format only. Do not attempt to run DisMod-MR
+  from R in the first slice.
+- Write one combined long DisMod-MR evidence file for all diseases, sexes,
+  strata, age groups, and parameters.
+- Support both `05_disease_epidemiology_raw.csv` and
+  `06_dismod_input_skeleton.csv` as input sources.
+- Give `06_dismod_input_skeleton.csv` precedence when both files provide the
+  same disease, sex, stratum, age group, and parameter.
+- Preserve original age bands in the DisMod-MR evidence export using
+  `age_start`, `age_end`, and `age_label`.
+- Drop blank or missing parameter values from the evidence export, but write an
+  omissions audit so missing values are visible.
+- Write a separate exact single-year target grid for parameters DisMod-MR is
+  expected to estimate.
+- Use `spec$ages` for target-grid ages when `spec` is supplied; otherwise infer
+  exact ages from raw disease input coverage.
+- Flag requested target ages outside observed raw evidence coverage as possible
+  DisMod-MR extrapolation.
+- Use narrow adapter-specific validation. Do not require the entire raw folder
+  to pass `check_raw_input_readiness()` before DisMod-MR input export.
 
 Acceptance criteria:
 
 - Documentation clearly separates DisMod-lite from real DisMod-MR.
+- `prepare_dismod_mr_inputs()` writes:
+  - `dismod_mr_input_long.csv`
+  - `dismod_mr_target_grid.csv`
+  - `dismod_mr_input_omissions.csv`
+  - `dismod_mr_input_summary.csv`
+- The evidence file contains observed non-missing values only.
+- The target grid contains exact integer single-year ages and required
+  parameters:
+  `incidence`, `prevalence`, `remission`, `excess_mortality`, and
+  `case_fatality`.
+- Missing raw parameters such as remission or case fatality are still included
+  in the target grid when they are expected DisMod-MR outputs.
+- Adapter validation checks only the disease evidence and target-grid contract,
+  not unrelated cost, intervention, or all-cause template readiness.
+- Tests cover combined wide/long input handling, source precedence, missing
+  observation omissions, target-grid generation, and extrapolation flags.
+
+Implementation design note:
+
+- DisMod-MR input rows are observed evidence, not requested estimates. Blank
+  template cells should therefore not be written as `NA` evidence rows.
+- `dismod_mr_target_grid.csv` is the requested prediction grid and should list
+  all disease, sex, stratum, exact-age, and parameter combinations expected
+  from DisMod-MR.
+- The first slice should expose file contracts and validation while leaving
+  DisMod-MR execution to the user or external pipeline.
 
 ### 3.2 Define canonical DisMod output contract
 
@@ -304,6 +357,51 @@ Implementation note:
   use exact-age `pmslt_disease_epi.csv`, while raw age-banded inputs remain
   separate and may be expanded where intervention inputs intentionally cover
   age bands.
+
+### 3.2a Define real DisMod-MR output adapter contract
+
+Status: ready for implementation.
+
+Problem:
+
+- `pmslt_disease_epi.csv` is the canonical PMSLT-ready output, but a real
+  DisMod-MR output file should remain adapter-shaped rather than PMSLT-shaped.
+
+Todo:
+
+- Make `read_dismod_mr_outputs()` read a generic long parameter table.
+- Require exact integer single-year `age` in real DisMod-MR outputs.
+- Require columns:
+  `age`, `sex`, `stratum`, `disease`, `parameter`, and `mean_value`.
+- Allow optional `lower_95` and `upper_95` uncertainty columns.
+- Require parameter values:
+  `incidence`, `prevalence`, `remission`, `excess_mortality`, and
+  `case_fatality`.
+- Do not require `disability_weight` from DisMod-MR.
+- Preserve optional uncertainty columns as provenance where practical, but do
+  not use them in deterministic PMSLT calculations until PSA support is built.
+- Add `prepare_pmslt_disease_inputs_from_dismod_mr()` to bridge the generic
+  long output into canonical wide `pmslt_disease_epi.csv`.
+- Source `disability_weight` from `05_disease_epidemiology_raw.csv` during the
+  bridge, expanding age-banded raw disability weights to exact output ages.
+
+Acceptance criteria:
+
+- `validate_dismod_mr_outputs()` rejects age-banded real DisMod-MR outputs in
+  the first adapter slice.
+- The validator detects missing required columns, invalid parameter names,
+  non-numeric values, invalid rates/proportions, incoherent uncertainty bounds,
+  and missing target-grid output rows.
+- The bridge maps:
+  - `incidence` to `incidence_BAU`
+  - `prevalence` to `prevalence_initial`
+  - `remission` to `remission_rate`
+  - `excess_mortality` to `excess_mortality_BAU`
+  - `case_fatality` to `case_fatality_BAU`
+- The bridge validates the resulting `pmslt_disease_epi.csv` with
+  `validate_pmslt_disease_inputs()`.
+- Tests cover successful bridge output, missing target rows, invalid age
+  resolution, optional uncertainty columns, and raw disability-weight joins.
 
 ### 3.3 Improve continuous-age diagnostics and reporting
 
