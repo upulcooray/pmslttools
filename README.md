@@ -108,7 +108,22 @@ modelled
 This checks that the external output file has exact single-year ages, supported
 DisMod-MR modelled parameters, non-negative values, coherent uncertainty bounds
 when present, and the requested target-grid rows. It does not create
-`pmslt_disease_epi.csv`; that bridge is a later package step.
+`pmslt_disease_epi.csv`.
+
+Convert the validated long-format DisMod-MR output into the canonical
+PMSLT-ready disease input:
+
+```r
+disease_inputs <- prepare_pmslt_disease_inputs_from_dismod_mr(
+  modelled,
+  raw_disease_inputs = "path/to/raw_inputs/05_disease_epidemiology_raw.csv",
+  output_path = "path/to/raw_inputs/pmslt_disease_epi.csv"
+)
+```
+
+This maps modelled incidence, prevalence, remission, excess mortality, and case
+fatality into PMSLT disease columns, then joins `disability_weight` from the raw
+disease input age bands.
 
 ## What do I do next?
 

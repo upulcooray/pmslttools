@@ -1,6 +1,6 @@
 # CODEX Notes for pmslttools
 
-Last updated: 2026-05-22
+Last updated: 2026-05-25
 
 ## Project Purpose
 
@@ -76,6 +76,7 @@ The package should guide users through:
 - `prepare_dismod_mr_inputs()`
 - `read_dismod_mr_outputs()`
 - `validate_dismod_mr_outputs()`
+- `prepare_pmslt_disease_inputs_from_dismod_mr()`
 - `mock_pmslt_spec()`
 - `generate_mock_pmslt_inputs()`
 - `mock_dismod_output()`
@@ -204,9 +205,8 @@ compare_halys(disease_attached, disease_attached)
 
 1. `run_pmslt_disease_lifetable()` is not a full PMSLT model yet. It is a
    disease-specific module.
-2. Real DisMod-MR file adapters now cover input preparation and external
-   output reading/validation. PMSLT-ready disease conversion from real
-   DisMod-MR outputs is still planned.
+2. Real DisMod-MR file adapters now cover input preparation, external output
+   reading/validation, and conversion to canonical PMSLT disease inputs.
 3. `demo_mock_inputs_raw/` may need regeneration after the latest multi-arm
    direct-effect changes.
 4. `initialize_pmslt_lifetable()` runs one BAU time step only.
@@ -230,8 +230,7 @@ compare_halys(disease_attached, disease_attached)
 
 1. Regenerate `demo_mock_inputs_raw/`.
 2. Add a full beginner vignette.
-3. Add the real DisMod-MR bridge to canonical `pmslt_disease_epi.csv`.
-4. Decide the later full main-lifetable convention for applying disease
+3. Decide the later full main-lifetable convention for applying disease
    mortality and morbidity deltas.
 
 ## Validation Commands

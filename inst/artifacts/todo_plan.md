@@ -243,8 +243,8 @@ Status: high priority
 
 ### 3.1 Separate teaching DisMod from real DisMod adapters
 
-Status: input-preparation adapter and output reader implemented; PMSLT-ready
-disease bridge remains planned.
+Status: input-preparation adapter, output reader, and PMSLT-ready disease
+bridge implemented.
 
 Problem:
 
@@ -262,7 +262,7 @@ Todo:
   - `prepare_dismod_mr_inputs()` - implemented.
   - `read_dismod_mr_outputs()` - implemented.
   - `validate_dismod_mr_outputs()` - implemented.
-  - `prepare_pmslt_disease_inputs_from_dismod_mr()`
+  - `prepare_pmslt_disease_inputs_from_dismod_mr()` - implemented.
 - Keep this first adapter file-format only. Do not attempt to run DisMod-MR
   from R in the first slice.
 - Write one combined long DisMod-MR evidence file for all diseases, sexes,
@@ -361,8 +361,7 @@ Implementation note:
 
 ### 3.2a Define real DisMod-MR output adapter contract
 
-Status: output reader and validator implemented 2026-05-25; bridge remains
-planned.
+Status: completed 2026-05-25.
 
 Problem:
 
@@ -417,7 +416,13 @@ Implementation note:
   output rows as warnings.
 - `disability_weight` is rejected as an unsupported DisMod-MR modelled
   parameter.
-- The bridge to `pmslt_disease_epi.csv` was not implemented in this slice.
+- Added exported `prepare_pmslt_disease_inputs_from_dismod_mr()`.
+- The bridge accepts a data frame, CSV path, or `dismod_mr_outputs` object,
+  validates DisMod-MR outputs before conversion, requires all five modelled
+  parameters per disease-age-sex-stratum key, joins raw age-banded
+  `disability_weight`, and validates the PMSLT-ready result by default.
+- Optional uncertainty bounds are preserved as provenance columns when present;
+  deterministic mean columns remain the PMSLT engine inputs.
 
 ### 3.3 Improve continuous-age diagnostics and reporting
 

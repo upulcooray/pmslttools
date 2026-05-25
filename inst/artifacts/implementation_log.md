@@ -611,6 +611,51 @@ Related artifacts updated:
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/implementation_log.md`
 
+## 2026-05-25: DisMod-MR to PMSLT Disease Input Bridge
+
+Reason:
+
+- Real DisMod-MR output reading and validation existed, but validated long
+  model outputs still needed a formal bridge into canonical
+  `pmslt_disease_epi.csv` rows.
+
+Change:
+
+- Added exported `prepare_pmslt_disease_inputs_from_dismod_mr()` in
+  `R/dismod-mr-to-pmslt.R`.
+- The bridge accepts DisMod-MR outputs as a data frame, CSV path, or
+  `dismod_mr_outputs` object and always applies Pack 2 validation before
+  conversion.
+- Mapped DisMod-MR parameters to PMSLT disease columns:
+  incidence, prevalence, remission, excess mortality, and case fatality.
+- Joined `disability_weight` from raw disease inputs using disease, sex,
+  stratum, and age-band coverage; missing or ambiguous matches fail clearly.
+- Preserved optional uncertainty bounds as provenance columns when present.
+- Added safe `output_path` writing with overwrite protection and a compact
+  print method for the returned classed data frame.
+
+Boundary:
+
+- No DisMod-MR execution, Python/R-INLA dependency, costs, HALYs, PSA,
+  intervention logic, lifetable runner changes, DisMod-lite changes, or mock
+  DisMod changes were added.
+
+Validation:
+
+- Added focused tests for data-frame, path, and `dismod_mr_outputs` inputs;
+  exact parameter mapping; age-band disability-weight joins; missing and
+  ambiguous disability-weight failures; missing required parameters; optional
+  uncertainty provenance; validation toggling; output writing and overwrite
+  behavior; and print output.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+
 ## 2026-05-25: Real DisMod-MR Output Reader and Validator
 
 Reason:

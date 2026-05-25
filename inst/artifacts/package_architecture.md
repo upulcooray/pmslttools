@@ -354,13 +354,14 @@ Files:
 
 - `R/dismod-mr-adapter.R`
 - `R/dismod-mr-output.R`
+- `R/dismod-mr-to-pmslt.R`
 
 Public functions:
 
 - `prepare_dismod_mr_inputs()`
 - `read_dismod_mr_outputs()`
 - `validate_dismod_mr_outputs()`
-- Planned: `prepare_pmslt_disease_inputs_from_dismod_mr()`
+- `prepare_pmslt_disease_inputs_from_dismod_mr()`
 
 Responsibilities:
 
@@ -375,8 +376,7 @@ Responsibilities:
   package expects DisMod-MR to estimate.
 - Read and validate external DisMod-MR output files without trying to run
   DisMod-MR from R.
-- Planned next bridge: convert validated real DisMod-MR outputs into
-  `pmslt_disease_epi.csv`.
+- Convert validated real DisMod-MR outputs into `pmslt_disease_epi.csv`.
 
 DisMod-MR input export contract:
 
@@ -429,15 +429,15 @@ DisMod-MR output contract:
 
 Bridge rule:
 
-- `prepare_pmslt_disease_inputs_from_dismod_mr()` should map the generic
+- `prepare_pmslt_disease_inputs_from_dismod_mr()` maps the generic
   DisMod-MR output parameters into the canonical PMSLT-ready columns:
   `incidence` to `incidence_BAU`, `prevalence` to
   `prevalence_initial`, `remission` to `remission_rate`,
   `excess_mortality` to `excess_mortality_BAU`, and `case_fatality` to
   `case_fatality_BAU`.
-- The bridge should expand or join raw `disability_weight` values from
-  age-banded raw inputs to exact output ages.
-- The bridge should validate the resulting `pmslt_disease_epi.csv` with
+- The bridge expands or joins raw `disability_weight` values from age-banded raw
+  inputs to exact output ages and fails on missing or ambiguous matches.
+- The bridge validates the resulting `pmslt_disease_epi.csv` with
   `validate_pmslt_disease_inputs()`.
 
 Validation boundary:
