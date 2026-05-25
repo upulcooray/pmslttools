@@ -611,6 +611,46 @@ Related artifacts updated:
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/implementation_log.md`
 
+## 2026-05-25: Real DisMod-MR Input Preparation Adapter
+
+Reason:
+
+- The package had teaching/local DisMod-lite helpers but no real file bridge
+  from raw disease templates to external DisMod-MR inputs.
+
+Change:
+
+- Added exported `prepare_dismod_mr_inputs()` in `R/dismod-mr-adapter.R`.
+- The adapter reads `05_disease_epidemiology_raw.csv` and optional
+  `06_dismod_input_skeleton.csv`.
+- It writes `dismod_mr_input_long.csv`, `dismod_mr_target_grid.csv`,
+  `dismod_mr_input_omissions.csv`, and `dismod_mr_input_summary.csv`.
+- Raw evidence age bands are preserved in the long evidence file, while the
+  target grid expands to exact integer ages.
+- Skeleton values take precedence over matching raw evidence rows, and
+  overridden raw rows are reported in the omissions audit.
+
+Boundary:
+
+- File preparation only.
+- No DisMod-MR execution, output reader, `pmslt_disease_epi.csv` conversion,
+  DisMod-lite changes, intervention changes, PSA, costs, or HALY changes.
+
+Validation:
+
+- Added focused tests for file creation, required long columns, age-band
+  preservation, exact-age target-grid expansion, skeleton support and
+  precedence, unsupported parameters, disability-weight exclusion, overwrite
+  protection, missing raw file errors, and print output.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+
 ## 2026-05-22: Workflow Next-Step Guidance
 
 Reason:

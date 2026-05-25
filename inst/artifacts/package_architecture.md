@@ -352,14 +352,14 @@ Design rule:
 
 Files:
 
-- Planned: `R/dismod-mr-adapter.R`
+- `R/dismod-mr-adapter.R`
 
 Planned public functions:
 
 - `prepare_dismod_mr_inputs()`
-- `read_dismod_mr_outputs()`
-- `validate_dismod_mr_outputs()`
-- `prepare_pmslt_disease_inputs_from_dismod_mr()`
+- Planned: `read_dismod_mr_outputs()`
+- Planned: `validate_dismod_mr_outputs()`
+- Planned: `prepare_pmslt_disease_inputs_from_dismod_mr()`
 
 Responsibilities:
 
@@ -378,7 +378,7 @@ Responsibilities:
 
 DisMod-MR input export contract:
 
-- `prepare_dismod_mr_inputs()` should support both
+- `prepare_dismod_mr_inputs()` supports both
   `05_disease_epidemiology_raw.csv` and `06_dismod_input_skeleton.csv`.
 - When both files provide the same disease, sex, stratum, age group, and
   parameter, `06_dismod_input_skeleton.csv` takes precedence.
@@ -388,7 +388,7 @@ DisMod-MR input export contract:
   and `age_label`.
 - Blank or missing parameter values are not exported as evidence observations.
   They are omitted from the evidence file and recorded in an omissions audit.
-- The adapter should write companion audit files:
+- The adapter writes companion audit files:
   `dismod_mr_input_omissions.csv`, `dismod_mr_input_summary.csv`, and
   `dismod_mr_target_grid.csv`.
 - `dismod_mr_target_grid.csv` uses exact integer single-year `age`, because it
@@ -699,4 +699,3 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 6. Keep mock DisMod functions clearly labelled as teaching-only.
 7. Prefer explicit CSV schemas and validators over implicit assumptions.
 8. Keep documentation close to the template files that students must fill.
-

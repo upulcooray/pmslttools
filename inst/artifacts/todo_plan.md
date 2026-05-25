@@ -243,7 +243,8 @@ Status: high priority
 
 ### 3.1 Separate teaching DisMod from real DisMod adapters
 
-Status: ready for implementation.
+Status: input-preparation adapter implemented; output-reader bridge remains
+planned.
 
 Problem:
 
@@ -256,9 +257,9 @@ Problem:
 Todo:
 
 - Keep `dismod_slove()` as a local teaching/diagnostic tool.
-- Add a new real adapter module, planned as `R/dismod-mr-adapter.R`.
-- Add planned exported functions:
-  - `prepare_dismod_mr_inputs()`
+- Add a new real adapter module, `R/dismod-mr-adapter.R`.
+- Add real adapter functions:
+  - `prepare_dismod_mr_inputs()` - implemented.
   - `read_dismod_mr_outputs()`
   - `validate_dismod_mr_outputs()`
   - `prepare_pmslt_disease_inputs_from_dismod_mr()`

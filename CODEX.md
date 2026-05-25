@@ -201,7 +201,8 @@ compare_halys(disease_attached, disease_attached)
 
 1. `run_pmslt_disease_lifetable()` is not a full PMSLT model yet. It is a
    disease-specific module.
-2. Real DisMod-MR integration does not exist yet.
+2. Real DisMod-MR input preparation exists via `prepare_dismod_mr_inputs()`,
+   but output reading and PMSLT-ready disease conversion are still planned.
 3. `demo_mock_inputs_raw/` may need regeneration after the latest multi-arm
    direct-effect changes.
 4. `initialize_pmslt_lifetable()` runs one BAU time step only.
@@ -225,7 +226,9 @@ compare_halys(disease_attached, disease_attached)
 
 1. Regenerate `demo_mock_inputs_raw/`.
 2. Add a full beginner vignette.
-3. Decide the later full main-lifetable convention for applying disease
+3. Add the real DisMod-MR output reader and bridge to canonical
+   `pmslt_disease_epi.csv`.
+4. Decide the later full main-lifetable convention for applying disease
    mortality and morbidity deltas.
 
 ## Validation Commands

@@ -26,6 +26,8 @@ This first scaffold includes:
   parameters where simple illness-death consistency equations are identifiable.
   It can optionally propagate uncertainty from `lower_95` and `upper_95`
   columns by Monte Carlo sampling.
+- `prepare_dismod_mr_inputs()` to export raw disease evidence and optional
+  DisMod skeleton rows as clean CSV inputs for an external DisMod-MR workflow.
 - `initialize_pmslt_lifetable()` to create a one-step, single-year,
   business-as-usual all-cause lifetable from population, mortality, and
   optional morbidity inputs.
@@ -79,6 +81,18 @@ conditional, or optional. After filling the templates, run
 guidance, and access to the full issue table before moving on to DisMod-lite.
 For lower-level control, use `validate_raw_inputs()` to get the issue table and
 `summarise_raw_input_issues()` to summarise it.
+
+## Real DisMod-MR input preparation
+
+```r
+prep <- prepare_dismod_mr_inputs("path/to/raw_inputs")
+prep
+```
+
+This writes `dismod_mr_input_long.csv`, `dismod_mr_target_grid.csv`,
+`dismod_mr_input_omissions.csv`, and `dismod_mr_input_summary.csv` for an
+external DisMod-MR workflow. It prepares files only; it does not run DisMod-MR
+or create `pmslt_disease_epi.csv`.
 
 ## What do I do next?
 
