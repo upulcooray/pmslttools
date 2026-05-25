@@ -352,7 +352,7 @@ Design rule:
 
 Files:
 
-- `R/dismod-mr-adapter.R`
+- `R/dismod-mr-inputs.R`
 - `R/dismod-mr-output.R`
 - `R/dismod-mr-to-pmslt.R`
 
@@ -388,6 +388,10 @@ DisMod-MR input export contract:
   `dismod_mr_input_long.csv`.
 - Evidence rows preserve the original age grouping with `age_start`, `age_end`,
   and `age_label`.
+- Evidence rows contain observed non-missing values only. Supported evidence
+  parameters are `incidence`, `prevalence`, `remission`,
+  `excess_mortality`, `case_fatality`, and optional raw provenance
+  `disability_weight`.
 - Blank or missing parameter values are not exported as evidence observations.
   They are omitted from the evidence file and recorded in an omissions audit.
 - The adapter writes companion audit files:
@@ -401,6 +405,9 @@ DisMod-MR input export contract:
 - If `spec$ages` requests ages outside observed evidence coverage, the adapter
   should allow the target grid but flag that DisMod-MR extrapolation may be
   required.
+- `dismod_mr_input_summary.csv` is grouped by disease, sex, stratum, and
+  parameter, with evidence counts, omitted-row counts, target-age counts, and
+  extrapolation target counts.
 
 DisMod-MR output contract:
 

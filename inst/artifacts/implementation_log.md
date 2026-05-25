@@ -716,18 +716,29 @@ Reason:
 
 - The package had teaching/local DisMod-lite helpers but no real file bridge
   from raw disease templates to external DisMod-MR inputs.
+- Pack 4 completes the upstream half of the real DisMod-MR adapter so users can
+  prepare explicit input, target-grid, omissions, and summary files before
+  running DisMod-MR externally.
 
 Change:
 
-- Added exported `prepare_dismod_mr_inputs()` in `R/dismod-mr-adapter.R`.
+- Added exported `prepare_dismod_mr_inputs()` in `R/dismod-mr-inputs.R`.
 - The adapter reads `05_disease_epidemiology_raw.csv` and optional
-  `06_dismod_input_skeleton.csv`.
+  `06_dismod_input_skeleton.csv`, with direct data-frame or CSV-path overrides
+  for both sources.
 - It writes `dismod_mr_input_long.csv`, `dismod_mr_target_grid.csv`,
   `dismod_mr_input_omissions.csv`, and `dismod_mr_input_summary.csv`.
 - Raw evidence age bands are preserved in the long evidence file, while the
   target grid expands to exact integer ages.
 - Skeleton values take precedence over matching raw evidence rows, and
   overridden raw rows are reported in the omissions audit.
+- Blank, missing, non-numeric, negative, unsupported, or otherwise unusable
+  observations are omitted from evidence and recorded in the omissions audit.
+- `spec$ages` drives exact target ages when supplied; otherwise the target grid
+  uses observed source age coverage. Target rows are flagged when they require
+  extrapolation beyond available parameter-specific evidence.
+- `dismod_mr_input_summary.csv` is grouped by disease, sex, stratum, and
+  parameter.
 
 Boundary:
 
@@ -737,15 +748,15 @@ Boundary:
 
 Validation:
 
-- Added focused tests for file creation, required long columns, age-band
-  preservation, exact-age target-grid expansion, skeleton support and
-  precedence, unsupported parameters, disability-weight exclusion, overwrite
-  protection, missing raw file errors, and print output.
+- Added `tests/testthat/test-dismod-mr-inputs.R`.
+- Tests cover raw-only export, skeleton-only export, combined source
+  precedence, blank and non-numeric omissions, target-grid generation with and
+  without `spec`, extrapolation flags, direct data-frame overrides, bad input
+  errors, and grouped summary output.
 
 Related artifacts updated:
 
 - `README.md`
-- `CODEX.md`
 - `inst/artifacts/package_architecture.md`
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/implementation_log.md`

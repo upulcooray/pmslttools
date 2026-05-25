@@ -85,8 +85,16 @@ For lower-level control, use `validate_raw_inputs()` to get the issue table and
 ## Real DisMod-MR input preparation
 
 ```r
-prep <- prepare_dismod_mr_inputs("path/to/raw_inputs")
-prep
+prepare_dismod_mr_inputs("inputs_raw", "dismod_mr_inputs", spec = spec)
+# Run DisMod-MR externally.
+dismod_outputs <- read_dismod_mr_outputs(
+  "dismod_mr_outputs/dismod_mr_results.csv",
+  target_grid = "dismod_mr_inputs/dismod_mr_target_grid.csv"
+)
+disease_epi <- prepare_pmslt_disease_inputs_from_dismod_mr(
+  dismod_outputs,
+  raw_disease_inputs = "inputs_raw/05_disease_epidemiology_raw.csv"
+)
 ```
 
 This writes `dismod_mr_input_long.csv`, `dismod_mr_target_grid.csv`,
@@ -94,32 +102,10 @@ This writes `dismod_mr_input_long.csv`, `dismod_mr_target_grid.csv`,
 external DisMod-MR workflow. It prepares files only; it does not run DisMod-MR
 or create `pmslt_disease_epi.csv`.
 
-After running DisMod-MR outside the package, read and validate the modelled
-long-format results:
-
-```r
-modelled <- read_dismod_mr_outputs(
-  "path/to/dismod_mr_results.csv",
-  target_grid = "path/to/dismod_mr_inputs/dismod_mr_target_grid.csv"
-)
-modelled
-```
-
 This checks that the external output file has exact single-year ages, supported
 DisMod-MR modelled parameters, non-negative values, coherent uncertainty bounds
 when present, and the requested target-grid rows. It does not create
 `pmslt_disease_epi.csv`.
-
-Convert the validated long-format DisMod-MR output into the canonical
-PMSLT-ready disease input:
-
-```r
-disease_inputs <- prepare_pmslt_disease_inputs_from_dismod_mr(
-  modelled,
-  raw_disease_inputs = "path/to/raw_inputs/05_disease_epidemiology_raw.csv",
-  output_path = "path/to/raw_inputs/pmslt_disease_epi.csv"
-)
-```
 
 This maps modelled incidence, prevalence, remission, excess mortality, and case
 fatality into PMSLT disease columns, then joins `disability_weight` from the raw

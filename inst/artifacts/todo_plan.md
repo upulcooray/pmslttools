@@ -257,7 +257,8 @@ Problem:
 Todo:
 
 - Keep `dismod_slove()` as a local teaching/diagnostic tool.
-- Add a new real adapter module, `R/dismod-mr-adapter.R`.
+- Add real adapter modules for input export, output reading, and PMSLT
+  bridging.
 - Add real adapter functions:
   - `prepare_dismod_mr_inputs()` - implemented.
   - `read_dismod_mr_outputs()` - implemented.
@@ -269,6 +270,8 @@ Todo:
   strata, age groups, and parameters.
 - Support both `05_disease_epidemiology_raw.csv` and
   `06_dismod_input_skeleton.csv` as input sources.
+- Support direct data-frame or CSV-path overrides for disease evidence and
+  DisMod skeleton evidence.
 - Give `06_dismod_input_skeleton.csv` precedence when both files provide the
   same disease, sex, stratum, age group, and parameter.
 - Preserve original age bands in the DisMod-MR evidence export using
@@ -281,6 +284,9 @@ Todo:
   exact ages from raw disease input coverage.
 - Flag requested target ages outside observed raw evidence coverage as possible
   DisMod-MR extrapolation.
+- Write `dismod_mr_input_summary.csv` by disease, sex, stratum, and parameter,
+  including evidence counts, omission counts, target-age counts, and
+  extrapolation counts.
 - Use narrow adapter-specific validation. Do not require the entire raw folder
   to pass `check_raw_input_readiness()` before DisMod-MR input export.
 
