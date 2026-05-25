@@ -94,6 +94,22 @@ This writes `dismod_mr_input_long.csv`, `dismod_mr_target_grid.csv`,
 external DisMod-MR workflow. It prepares files only; it does not run DisMod-MR
 or create `pmslt_disease_epi.csv`.
 
+After running DisMod-MR outside the package, read and validate the modelled
+long-format results:
+
+```r
+modelled <- read_dismod_mr_outputs(
+  "path/to/dismod_mr_results.csv",
+  target_grid = "path/to/dismod_mr_inputs/dismod_mr_target_grid.csv"
+)
+modelled
+```
+
+This checks that the external output file has exact single-year ages, supported
+DisMod-MR modelled parameters, non-negative values, coherent uncertainty bounds
+when present, and the requested target-grid rows. It does not create
+`pmslt_disease_epi.csv`; that bridge is a later package step.
+
 ## What do I do next?
 
 ```r

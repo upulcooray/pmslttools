@@ -611,6 +611,60 @@ Related artifacts updated:
 - `inst/artifacts/todo_plan.md`
 - `inst/artifacts/implementation_log.md`
 
+## 2026-05-25: Real DisMod-MR Output Reader and Validator
+
+Reason:
+
+- Pack 1 prepares files for an external DisMod-MR workflow, but the package
+  also needs a formal way to read, validate, and audit the modelled outputs
+  that analysts produce outside R.
+
+Change:
+
+- Added exported `read_dismod_mr_outputs()` in `R/dismod-mr-output.R`.
+- Added exported `validate_dismod_mr_outputs()` and S3 class
+  `dismod_mr_output_validation`.
+- Added S3 class `dismod_mr_outputs` plus print methods for the output object
+  and validation object.
+- The reader accepts one long-format CSV and an optional target grid supplied
+  as a data frame or path to `dismod_mr_target_grid.csv`.
+- The validator checks required columns, allowed DisMod-MR modelled
+  parameters, exact integer single-year ages, non-empty identifiers,
+  non-negative `mean_value`, optional uncertainty bounds, duplicate output
+  keys, target-grid completeness, and extra output rows as warnings.
+- `disability_weight` is rejected as an unsupported DisMod-MR modelled
+  parameter.
+
+Boundary:
+
+- Output reading and validation only.
+- No DisMod-MR execution, Python/R-INLA calls, `pmslt_disease_epi.csv`
+  conversion, DisMod-lite changes, intervention changes, costs, PSA, or HALY
+  changes.
+
+Validation:
+
+- Added `tests/testthat/test-dismod-mr-output.R` with temporary CSV fixtures
+  covering valid outputs, strict/non-strict validation, unsupported parameters,
+  exact-age checks, duplicate keys, uncertainty bounds, target-grid checks,
+  path handling, and print methods.
+- `devtools::document()` completed and generated
+  `man/read_dismod_mr_outputs.Rd`, `man/validate_dismod_mr_outputs.Rd`, and
+  the NAMESPACE exports. Existing manually owned `.Rd` files were skipped by
+  roxygen as in earlier slices.
+- `devtools::test()` passed with 557 tests.
+- `R CMD build .` built `pmslttools_0.0.0.9009.tar.gz`.
+- `R CMD check pmslttools_0.0.0.9009.tar.gz --no-manual --no-build-vignettes`
+  completed with status OK.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+
 ## 2026-05-25: Real DisMod-MR Input Preparation Adapter
 
 Reason:

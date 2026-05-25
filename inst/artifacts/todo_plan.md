@@ -243,8 +243,8 @@ Status: high priority
 
 ### 3.1 Separate teaching DisMod from real DisMod adapters
 
-Status: input-preparation adapter implemented; output-reader bridge remains
-planned.
+Status: input-preparation adapter and output reader implemented; PMSLT-ready
+disease bridge remains planned.
 
 Problem:
 
@@ -260,8 +260,8 @@ Todo:
 - Add a new real adapter module, `R/dismod-mr-adapter.R`.
 - Add real adapter functions:
   - `prepare_dismod_mr_inputs()` - implemented.
-  - `read_dismod_mr_outputs()`
-  - `validate_dismod_mr_outputs()`
+  - `read_dismod_mr_outputs()` - implemented.
+  - `validate_dismod_mr_outputs()` - implemented.
   - `prepare_pmslt_disease_inputs_from_dismod_mr()`
 - Keep this first adapter file-format only. Do not attempt to run DisMod-MR
   from R in the first slice.
@@ -361,7 +361,8 @@ Implementation note:
 
 ### 3.2a Define real DisMod-MR output adapter contract
 
-Status: ready for implementation.
+Status: output reader and validator implemented 2026-05-25; bridge remains
+planned.
 
 Problem:
 
@@ -403,6 +404,20 @@ Acceptance criteria:
   `validate_pmslt_disease_inputs()`.
 - Tests cover successful bridge output, missing target rows, invalid age
   resolution, optional uncertainty columns, and raw disability-weight joins.
+
+Implementation note:
+
+- Added exported `read_dismod_mr_outputs()` and
+  `validate_dismod_mr_outputs()`.
+- The reader validates one external long-format CSV and returns a
+  `dismod_mr_outputs` object.
+- The validator checks required columns, allowed parameters, exact integer
+  single-year ages, non-empty identifiers, non-negative modelled values,
+  uncertainty bounds, duplicate keys, target-grid completeness, and extra
+  output rows as warnings.
+- `disability_weight` is rejected as an unsupported DisMod-MR modelled
+  parameter.
+- The bridge to `pmslt_disease_epi.csv` was not implemented in this slice.
 
 ### 3.3 Improve continuous-age diagnostics and reporting
 

@@ -353,12 +353,13 @@ Design rule:
 Files:
 
 - `R/dismod-mr-adapter.R`
+- `R/dismod-mr-output.R`
 
-Planned public functions:
+Public functions:
 
 - `prepare_dismod_mr_inputs()`
-- Planned: `read_dismod_mr_outputs()`
-- Planned: `validate_dismod_mr_outputs()`
+- `read_dismod_mr_outputs()`
+- `validate_dismod_mr_outputs()`
 - Planned: `prepare_pmslt_disease_inputs_from_dismod_mr()`
 
 Responsibilities:
@@ -374,7 +375,8 @@ Responsibilities:
   package expects DisMod-MR to estimate.
 - Read and validate external DisMod-MR output files without trying to run
   DisMod-MR from R.
-- Convert validated real DisMod-MR outputs into `pmslt_disease_epi.csv`.
+- Planned next bridge: convert validated real DisMod-MR outputs into
+  `pmslt_disease_epi.csv`.
 
 DisMod-MR input export contract:
 
@@ -417,6 +419,13 @@ DisMod-MR output contract:
 - `disability_weight` is not required from DisMod-MR. It remains a PMSLT raw
   input parameter and should be joined from `05_disease_epidemiology_raw.csv`
   during the bridge to `pmslt_disease_epi.csv`.
+- `read_dismod_mr_outputs()` returns a `dismod_mr_outputs` object containing
+  the cleaned output table, validation object, source path, and optional target
+  grid used for validation.
+- `validate_dismod_mr_outputs()` returns a `dismod_mr_output_validation`
+  object with issue rows, summary counts, validity status, required columns,
+  optional columns, and allowed parameters. In strict mode, validation errors
+  stop with beginner-facing messages.
 
 Bridge rule:
 
@@ -439,6 +448,10 @@ Validation boundary:
 - Adapter validation should check required disease evidence files, identifier
   columns, allowed parameter names, numeric observed values, coherent
   uncertainty bounds when present, and target-grid construction.
+- External output validation checks required output columns, unsupported
+  parameters, exact integer ages, non-empty identifiers, non-negative
+  `mean_value`, optional uncertainty bounds, duplicate output keys, missing
+  target-grid combinations, and extra output rows as warnings.
 - Full raw-input readiness remains a separate PMSLT workflow check before full
   model execution.
 
