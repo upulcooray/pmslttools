@@ -135,7 +135,7 @@ test_that("navigation follows the implemented beginner workflow order", {
       "check_raw_input_readiness",
       "check_raw_input_readiness",
       "check_raw_input_readiness",
-      "run_pmslt_interventions",
+      "run_pmslt",
       "run_pmslt_lifetable_interventions",
       "summarise_pmslt_results",
       "calculate_halys"

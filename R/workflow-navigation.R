@@ -143,10 +143,10 @@ next_step_guidance <- function(stage, object = NULL) {
   if (stage == "disease_consistency") {
     return(new_next_step(
       current_stage = "disease_consistency",
-      next_step = "Use the canonical disease input file in the intervention workflow.",
-      recommended_function = "run_pmslt_interventions",
-      why = "The disease consistency step writes exact-age `pmslt_disease_epi.csv`; downstream intervention functions should consume that file instead of raw age-banded disease templates.",
-      example = 'results <- run_pmslt_interventions(disease_epi = "inputs_raw/disease_consistency_results/pmslt_disease_epi.csv")'
+      next_step = "Run the whole remaining pipeline in one call, or step through the layers manually.",
+      recommended_function = "run_pmslt",
+      why = "Once disease consistency has been solved, `run_pmslt()` chains the intervention, all-cause lifetable, and HALY/cost/ICER reporting layers into a single `pmslt_run` result. The individual functions (run_pmslt_interventions, run_pmslt_lifetable_interventions, calculate_halys) remain available for step-by-step control.",
+      example = 'run <- run_pmslt("inputs_raw", solver = "dismod_slove", horizon = spec$horizon)'
     ))
   }
 

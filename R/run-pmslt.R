@@ -103,12 +103,18 @@ run_pmslt <- function(input_dir = NULL,
   }
 
   # --- Resolve inputs (explicit argument wins; otherwise look in input_dir) ----
-  population <- resolve_run_pmslt_input(population, input_dir, "01_population.csv",
-                                        required = TRUE, label = "population")
-  mortality <- resolve_run_pmslt_input(mortality, input_dir, "02_all_cause_mortality.csv",
-                                       required = TRUE, label = "mortality")
-  morbidity <- resolve_run_pmslt_input(morbidity, input_dir, "03_all_cause_morbidity.csv",
-                                       required = FALSE, label = "morbidity")
+  # Population/mortality/morbidity may be supplied in the banded census template
+  # format; prepare_lifetable_inputs() expands them to the exact single-year ages
+  # the main lifetable engine requires (exact-age inputs pass through unchanged).
+  lifetable_inputs <- prepare_lifetable_inputs(
+    population = population,
+    mortality = mortality,
+    morbidity = morbidity,
+    input_dir = input_dir
+  )
+  population <- lifetable_inputs$population
+  mortality <- lifetable_inputs$mortality
+  morbidity <- lifetable_inputs$morbidity
   risk_prevalence <- resolve_run_pmslt_input(risk_prevalence, input_dir, "08_risk_factor_prevalence.csv",
                                              required = FALSE, label = "risk_prevalence")
   relative_risks <- resolve_run_pmslt_input(relative_risks, input_dir, "09_relative_risks.csv",

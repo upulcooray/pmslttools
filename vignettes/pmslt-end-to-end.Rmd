@@ -1,0 +1,157 @@
+---
+title: "A complete PMSLT analysis from spec to results"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{A complete PMSLT analysis from spec to results}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r library}
+library(pmslttools)
+```
+
+## What this vignette covers
+
+`pmslttools` walks a modeller from a small model specification to a full
+proportional multistate lifetable (PMSLT) result. This vignette runs the whole
+workflow on built-in mock data so you can see the moving parts before supplying
+real inputs. The headline driver is `run_pmslt()`, which chains every layer into
+one call.
+
+The workflow has four stages:
+
+1. **Specify and template** the model.
+2. **Solve disease consistency** to get canonical disease inputs.
+3. **Run the simulation** for business-as-usual (BAU) and each intervention arm.
+4. **Read the results**: health outcomes, costs, and cost-effectiveness.
+
+## 1. Specify the model and draft input templates
+
+A `pmslt_spec()` records the intervention, the diseases it acts on, the
+population structure, and the time horizon. `draft_input_templates()` turns the
+spec into a folder of numbered CSV templates with a written guide.
+
+For this vignette we use `generate_mock_pmslt_inputs()`, which drafts the
+templates *and* fills them with illustrative values, so every required file is
+ready to run.
+
+```{r generate}
+input_dir <- file.path(tempdir(), "pmslt_inputs_raw")
+generate_mock_pmslt_inputs(output_dir = input_dir)
+list.files(input_dir, pattern = "\\.csv$")
+```
+
+The numbered files separate concerns: population and all-cause rates
+(`01`–`03`), disease epidemiology (`05`–`06`), intervention evidence
+(`08`–`10`), and optional equity and cost inputs (`11`–`12`).
+
+## 2. Run the whole pipeline
+
+With filled inputs in place, `run_pmslt()` does everything: it solves disease
+consistency, converts intervention evidence into disease deltas, ages the
+population through the all-cause lifetable for BAU and each arm, and assembles
+the reporting tables.
+
+The default solver, `"dismod_slove"`, is deterministic and needs no optional
+dependencies. (The more rigorous Bayesian solver, `"disbayes"`, is available via
+`solver = "disbayes"` when the optional `disbayes` package is installed.)
+
+```{r run, message = FALSE}
+run <- run_pmslt(
+  input_dir = input_dir,
+  solver = "dismod_slove",
+  horizon = 10
+)
+
+run
+```
+
+`run_pmslt()` returns a `pmslt_run` object. `summary()` prints the headline
+results: BAU health outcomes and, for every intervention arm, the incremental
+effect against BAU.
+
+```{r summary}
+summary(run)
+```
+
+## 3. Reading the results
+
+The result object exposes each layer for further reporting.
+
+**Health-adjusted life years.** `run$halys` holds the BAU summary and a
+comparison per arm. HALYs are person-years lived minus years lived with
+disability.
+
+```{r halys}
+run$halys$bau
+
+run$halys$comparisons[["Tobacco tax"]]
+```
+
+**The lifetable bridge.** `run$lifetable` is the all-cause main lifetable object
+with `bau`, the per-arm `interventions`, and ready-made `comparisons`. Because
+the census templates are age-banded, `run_pmslt()` expands them to exact single
+years internally before ageing the cohort.
+
+```{r lifetable}
+head(run$lifetable$bau[, c("time_step", "age", "sex", "person_years", "yld")])
+```
+
+## 4. Costs and cost-effectiveness
+
+When a `12_costs.csv` file is present (or a cost table is passed via the `costs`
+argument), `run_pmslt()` also attaches costs and computes incremental
+cost-effectiveness ratios using the `intervention - BAU` convention.
+
+```{r costs}
+costs <- data.frame(
+  age_start = 40, age_end = 80, age_label = "40-80",
+  sex = rep(c("male", "female"), each = 2),
+  stratum = "total",
+  disease = c("CHD", "Stroke", "CHD", "Stroke"),
+  disease_cost = 250,
+  background_cost = 120,
+  currency = "AUD", price_year = 2024,
+  source = "vignette", notes = "",
+  stringsAsFactors = FALSE
+)
+
+run_costed <- run_pmslt(
+  input_dir = input_dir,
+  solver = "dismod_slove",
+  horizon = 10,
+  costs = costs,
+  overwrite = TRUE
+)
+
+run_costed$icers
+```
+
+A positive ICER with `icer_status == "positive_incremental_halys"` is the
+familiar cost-per-HALY case; the status column flags zero or negative
+incremental-HALY arms explicitly rather than reporting a misleading ratio.
+
+## Stepping through the layers manually
+
+`run_pmslt()` is a convenience wrapper. Every layer is also a public function,
+so you can run them one at a time for teaching or finer control — for example
+`solve_disease_consistency()`, `run_pmslt_interventions()`,
+`run_pmslt_lifetable_interventions()`, `calculate_halys()`, and
+`calculate_icers()`. Use `next_pmslt_step()` at any point to get guidance on the
+recommended next call.
+
+```{r next-step}
+next_pmslt_step("disease_consistency")$recommended_function
+```
+
+## Where to go next
+
+- Add probabilistic sensitivity analysis with `run_pmslt(..., psa = TRUE)`.
+- Add an equity overlay with `run_pmslt(..., equity = TRUE)` and an
+  `11_stratum_rate_ratios.csv` file.
+- Replace the mock inputs with your own filled templates and re-run.

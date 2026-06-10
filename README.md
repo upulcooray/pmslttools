@@ -1,12 +1,18 @@
 # pmslttools
 
-`pmslttools` is an early-stage R package for guiding proportional multistate
-lifetable (PMSLT) simulation modelling projects.
+`pmslttools` is an R package for guiding proportional multistate lifetable
+(PMSLT) simulation modelling projects from end to end.
 
 The package starts before modelling. It helps a beginner define the intended
 model, generate project-specific input templates, identify which parameters are
-needed, and prepare a clear path toward disease consistency solving and PMSLT
-simulation.
+needed, solve disease consistency, and run the full PMSLT simulation — business
+as usual versus one or more intervention arms — through to health-adjusted life
+years, costs, and cost-effectiveness ratios.
+
+The fastest path is the one-call driver `run_pmslt()`, which chains every layer
+together. Each layer is also a separate, documented function for teaching or
+finer control. See the `pmslt-end-to-end` vignette for a worked example and
+`inst/artifacts/pmslt_concepts_for_beginners.md` for the underlying concepts.
 
 ## Current scope
 
@@ -50,9 +56,28 @@ This first scaffold includes:
 - `summarise_costs()`, `compare_costs()`, and `calculate_icers()` to summarise
   deterministic costs, report `intervention - BAU` cost deltas, and calculate
   ICERs only after incremental costs and incremental HALYs are both available.
+- `run_pmslt()` to run the whole pipeline in one call — disease consistency,
+  intervention deltas, the all-cause main lifetable for BAU and each arm, and
+  HALY/cost/ICER reporting — returning a single `pmslt_run` result, with
+  optional equity and probabilistic-sensitivity overlays.
+- `prepare_lifetable_inputs()` to expand the age-banded census templates
+  (`01`–`03`) into the exact single-year inputs the main lifetable engine needs.
 
-Full simulation engine functions will be migrated from the existing PMSLT
-template in later modules.
+## One-call workflow
+
+```r
+library(pmslttools)
+
+# Mock inputs to try the whole pipeline without real data:
+input_dir <- file.path(tempdir(), "inputs_raw")
+generate_mock_pmslt_inputs(output_dir = input_dir)
+
+run <- run_pmslt(input_dir, solver = "dismod_slove", horizon = 10)
+summary(run)
+```
+
+Replace the mock inputs with your own filled templates (see below) and re-run.
+The `pmslt-end-to-end` vignette walks through the result object in detail.
 
 ## Active beginner workflow
 

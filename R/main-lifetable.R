@@ -1608,6 +1608,18 @@ attach_lifetable_disease_output <- function(lifetable, effects, scenario, use_in
     effect_long$disease_yld <- effect_long$disease_morbidity_BAU
   }
 
+  # Carry disease prevalence (a proportion) through when the upstream disease
+  # lifetable provides it, so downstream costing can derive prevalent cases. The
+  # scenario-appropriate column is used; it is left absent if not supplied.
+  has_prevalence <- all(c("prevalence_BAU", "prevalence_Int") %in% names(effect_long))
+  if (has_prevalence) {
+    effect_long$disease_prevalence <- if (isTRUE(use_intervention)) {
+      effect_long$prevalence_Int
+    } else {
+      effect_long$prevalence_BAU
+    }
+  }
+
   keys <- c("time_step", "age", "sex", "stratum")
   validate_complete_intervention_disease_join(lifetable_with_id, effect_long, keys, scenario)
   long <- merge(
@@ -1618,7 +1630,8 @@ attach_lifetable_disease_output <- function(lifetable, effects, scenario, use_in
       "disease_mortality_BAU", "disease_mortality_Int",
       "disease_morbidity_BAU", "disease_morbidity_Int",
       "delta_mortality", "delta_morbidity",
-      "disease_cases", "disease_deaths", "disease_yld"
+      "disease_cases", "disease_deaths", "disease_yld",
+      if (has_prevalence) "disease_prevalence" else NULL
     )],
     by = keys,
     all.x = TRUE,

@@ -119,6 +119,9 @@ test_that("run_pmslt attaches costs and ICERs when cost inputs are present", {
   expect_equal(sort(run$icers$intervention), sort(run$arms))
   expect_false(is.null(run$costs))
   expect_true("total_costs" %in% names(run$costs$bau))
+  # Disease-specific costs require disease prevalence to flow from the disease
+  # lifetable through the main-lifetable bridge into costing.
+  expect_true(run$costs$bau$total_disease_costs > 0)
 })
 
 test_that("run_pmslt runs an optional probabilistic sensitivity analysis", {
@@ -157,6 +160,22 @@ test_that("run_pmslt solves disease consistency from input_dir with dismod_slove
   expect_s3_class(run, "pmslt_run")
   expect_equal(run$metadata$solver, "dismod_slove")
   expect_true(validate_pmslt_disease_inputs(run$disease_epi))
+})
+
+test_that("run_pmslt runs end to end from a raw input directory", {
+  out <- tempfile("pmslt_inputs_")
+  generate_mock_pmslt_inputs(output_dir = out)
+
+  run <- run_pmslt(input_dir = out, solver = "dismod_slove", horizon = 3, overwrite = TRUE)
+
+  expect_s3_class(run, "pmslt_run")
+  expect_equal(run$metadata$solver, "dismod_slove")
+  expect_equal(sort(run$arms), c("Tobacco tax", "Tobacco tax plus acute care"))
+  # The banded census population is expanded to exact ages internally.
+  expect_true(all(run$lifetable$bau$age == floor(run$lifetable$bau$age)))
+  # A risk-reducing tax should not increase disease deaths relative to BAU.
+  cmp <- run$halys$comparisons[["Tobacco tax"]]
+  expect_true(cmp$total_disease_deaths_difference <= 0)
 })
 
 test_that("run_pmslt errors clearly when required population is missing", {
