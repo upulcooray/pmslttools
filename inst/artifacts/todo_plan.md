@@ -1,6 +1,31 @@
 # pmslttools Todo Plan
 
-Last updated: 2026-05-25
+Last updated: 2026-06-10
+
+## Status update 2026-06-10 (0.1.0)
+
+Completed since the last revision:
+
+- One-call end-to-end driver `run_pmslt()` (Module IV/V equivalent) chaining
+  disease consistency, intervention deltas, the all-cause main lifetable, and
+  HALY/cost/ICER reporting into a `pmslt_run` object.
+- `prepare_lifetable_inputs()` bridges the age-banded census templates
+  (`01`-`03`) to the exact-age main lifetable (closes the "Module I not yet
+  migrated" gap for template-sourced inputs).
+- Phase 5.1 cost discounting (`discount_rate`), 5.2 pipeline-wide PSA with
+  HALY/cost/ICER uncertainty intervals, 5.3 scenario label, and 5.4 equity
+  disaggregation are wired through `run_pmslt()`.
+- Phase 6.1 vignette (`pmslt-end-to-end`) and 6.3 concept guide added.
+
+Remaining / future work:
+
+- 6.2 demo folder regeneration (the demo dir is gitignored; optional).
+- Population-weighted equity preservation (renormalising mode) — current equity
+  is reference-stratum scaling only.
+- Per-arm disease-specific cost detail under intervention rates (costing
+  currently uses BAU disease prevalence carried through the bridge).
+
+(Original plan below retained for history.)
 
 ## Guiding Priorities
 

@@ -18,6 +18,8 @@ run_pmslt(
   direct_effects = NULL,
   costs = NULL,
   stratum_rate_ratios = NULL,
+  discount_rate = 0,
+  scenario = NULL,
   equity = FALSE,
   psa = FALSE,
   psa_draws = 100,
@@ -60,6 +62,14 @@ results and ICERs are produced.}
 
 \item{stratum_rate_ratios}{Optional equity rate ratios
 (\verb{11_stratum_rate_ratios.csv}). Used only when \code{equity = TRUE}.}
+
+\item{discount_rate}{Annual discount rate applied to life-years, YLD, and
+costs in the headline summaries, using \code{1 / (1 + rate)^year}. Defaults to
+\code{0} (no discounting). A typical health economic value is \code{0.03}. The raw
+\code{lifetable} is always kept undiscounted.}
+
+\item{scenario}{Optional label stored in the run metadata, useful when
+comparing or combining several \code{run_pmslt()} results.}
 
 \item{equity}{Logical. Add a stratum-disaggregated disease-integration overlay
 using \code{\link[=integrate_disease_deltas]{integrate_disease_deltas()}}.}

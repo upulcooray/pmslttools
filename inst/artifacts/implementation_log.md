@@ -3,6 +3,52 @@
 This log records stepwise package-building decisions so future work can resume
 without re-reading the full conversation.
 
+## 2026-06-10: Consolidation, End-To-End Driver, And Rigor (0.1.0)
+
+Reason:
+
+- The validated eight-pact state was uncommitted and the package lacked one
+  obvious end-to-end driver, vignette, and the standard rigor pieces
+  (discounting, pipeline-wide uncertainty).
+
+Change:
+
+- Phase A (consolidation): committed the integrated working tree, fast-forwarded
+  `main`, pruned stale `cmux-*` and `pack/0x` branches, bumped to `0.1.0`, added
+  `NEWS.md`, and cleared the real R CMD check NOTEs via `.Rbuildignore`.
+- Phase B (end-to-end pipeline): added `run_pmslt()` (`R/run-pmslt.R`), a single
+  driver chaining disease consistency, intervention deltas, the all-cause main
+  lifetable for BAU and each arm, and HALY/cost/ICER reporting into a
+  `pmslt_run` object with `print`/`summary` methods. Added
+  `prepare_lifetable_inputs()` (`R/lifetable-inputs.R`) to expand the age-banded
+  census templates (`01`-`03`) into the exact single-year inputs the main
+  lifetable engine needs, so the pipeline runs end to end from a raw input
+  directory. Fixed disease costing through the intervention bridge by carrying
+  disease prevalence into the `disease_deltas` attribute in
+  `attach_lifetable_disease_output()`. Added the `pmslt-end-to-end` vignette, the
+  `pmslt_concepts_for_beginners.md` guide, and pointed `next_pmslt_step()` at
+  `run_pmslt()`.
+- Phase C (rigor): added a `discount_rate` argument that discounts HALYs and
+  costs to present value (`1 / (1 + r)^year`) while keeping the raw lifetable
+  undiscounted; added a `scenario` metadata label; extended PSA so every draw is
+  pushed through the full lifetable and reporting chain to summarise uncertainty
+  on incremental HALYs, costs, and ICERs (`run$psa$outcomes`); and added an
+  analytic equity-disaggregation validation suite (`test-validation.R`).
+
+Boundary:
+
+- No engine rewrite: `run_pmslt()` reuses the existing tested layer functions.
+- Discounting is a reporting-layer transform, not a change to the lifetable
+  engine. Population-weighted equity preservation (renormalising mode) remains
+  future work; the current equity model is reference-stratum scaling.
+- `disbayes` stays optional in `Suggests`.
+
+Validation:
+
+- `devtools::test()` green (172 test blocks, 0 failures, 0 errors).
+- `R CMD check` on the built `0.1.0` tarball is `Status: OK` (vignette rebuild,
+  examples, and tests included) with `--no-manual`.
+
 ## 2026-05-31: Pact Integration And Real Disbayes Verification
 
 Reason:

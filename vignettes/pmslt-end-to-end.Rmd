@@ -136,6 +136,19 @@ A positive ICER with `icer_status == "positive_incremental_halys"` is the
 familiar cost-per-HALY case; the status column flags zero or negative
 incremental-HALY arms explicitly rather than reporting a misleading ratio.
 
+For a cost-effectiveness analysis you will usually discount future health and
+costs to present value. Pass an annual `discount_rate` (for example `0.03`) and
+the headline HALY, cost, and ICER summaries are discounted with
+`1 / (1 + rate)^year`, while the raw lifetable is kept undiscounted:
+
+```{r discount}
+run_discounted <- run_pmslt(
+  input_dir = input_dir, solver = "dismod_slove", horizon = 10,
+  costs = costs, discount_rate = 0.03, overwrite = TRUE
+)
+run_discounted$icers
+```
+
 ## Stepping through the layers manually
 
 `run_pmslt()` is a convenience wrapper. Every layer is also a public function,

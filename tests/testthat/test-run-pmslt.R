@@ -178,6 +178,90 @@ test_that("run_pmslt runs end to end from a raw input directory", {
   expect_true(cmp$total_disease_deaths_difference <= 0)
 })
 
+test_that("run_pmslt discounts life-years and costs to present value", {
+  fx <- run_pmslt_fixture(horizon = 5)
+  args <- list(
+    input_dir = fx$dir,
+    disease_epi = fx$disease_epi,
+    population = fx$population,
+    mortality = fx$mortality,
+    morbidity = fx$morbidity,
+    costs = run_pmslt_cost_fixture(fx),
+    horizon = fx$horizon
+  )
+
+  undiscounted <- do.call(run_pmslt, args)
+  discounted <- do.call(run_pmslt, c(args, list(discount_rate = 0.03)))
+
+  # Discounting lowers present-valued HALYs and costs but leaves the raw
+  # lifetable untouched.
+  expect_lt(discounted$halys$bau$halys, undiscounted$halys$bau$halys)
+  expect_lt(discounted$costs$bau$total_costs, undiscounted$costs$bau$total_costs)
+  expect_equal(discounted$lifetable$bau$person_years, undiscounted$lifetable$bau$person_years)
+  expect_equal(discounted$metadata$discount_rate, 0.03)
+
+  # discount_rate = 0 is identical to the default.
+  expect_equal(do.call(run_pmslt, c(args, list(discount_rate = 0)))$halys$bau,
+               undiscounted$halys$bau)
+
+  expect_error(do.call(run_pmslt, c(args, list(discount_rate = 1.5))), "must be in")
+})
+
+test_that("run_pmslt PSA summarises uncertainty on incremental HALYs and costs", {
+  fx <- run_pmslt_fixture(horizon = 4)
+
+  run <- run_pmslt(
+    input_dir = fx$dir,
+    disease_epi = fx$disease_epi,
+    population = fx$population,
+    mortality = fx$mortality,
+    morbidity = fx$morbidity,
+    costs = run_pmslt_cost_fixture(fx),
+    horizon = fx$horizon,
+    psa = TRUE,
+    psa_draws = 6,
+    psa_seed = 42
+  )
+
+  outcomes <- run$psa$outcomes
+  expect_s3_class(outcomes, "data.frame")
+  expect_setequal(outcomes$intervention, run$arms)
+  expect_true(all(c("haly_difference_mean", "haly_difference_lower", "haly_difference_upper",
+                    "cost_difference_mean", "icer_mean") %in% names(outcomes)))
+  expect_true(all(outcomes$haly_difference_lower <= outcomes$haly_difference_upper))
+})
+
+test_that("run_pmslt equity overlay requires stratum rate ratios", {
+  fx <- run_pmslt_fixture()
+  expect_error(
+    run_pmslt(
+      input_dir = fx$dir,
+      disease_epi = fx$disease_epi,
+      population = fx$population,
+      mortality = fx$mortality,
+      morbidity = fx$morbidity,
+      horizon = fx$horizon,
+      equity = TRUE,
+      stratum_rate_ratios = NULL
+    ),
+    "stratum_rate_ratios"
+  )
+})
+
+test_that("run_pmslt records a scenario label in metadata", {
+  fx <- run_pmslt_fixture()
+  run <- run_pmslt(
+    input_dir = fx$dir,
+    disease_epi = fx$disease_epi,
+    population = fx$population,
+    mortality = fx$mortality,
+    morbidity = fx$morbidity,
+    horizon = fx$horizon,
+    scenario = "Base case"
+  )
+  expect_equal(run$metadata$scenario, "Base case")
+})
+
 test_that("run_pmslt errors clearly when required population is missing", {
   expect_error(
     run_pmslt(disease_epi = data.frame()),
