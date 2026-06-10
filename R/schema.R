@@ -65,7 +65,7 @@ raw_template_key_columns <- function(template_name) {
     "08_risk_factor_prevalence" = c("age_start", "sex", "stratum", "time_step", "intervention", "risk_factor", "risk_category"),
     "09_relative_risks" = c("age_start", "sex", "stratum", "risk_factor", "disease", "risk_category"),
     "10_direct_intervention_effects" = c("age_start", "sex", "stratum", "disease", "intervention"),
-    "11_stratum_rate_ratios" = "stratum",
+    "11_stratum_rate_ratios" = c("age_start", "sex", "stratum", "parameter"),
     "12_costs" = c("age_start", "sex", "stratum", "disease"),
     character()
   )
@@ -196,21 +196,23 @@ template_file_dictionary <- function() {
         incidence_rate = "Enter disease incidence rate per person-year if available. Example: 150 per 100,000 person-years becomes 0.0015. Leave blank if unavailable and intended for DisMod.",
         prevalence = "Enter disease prevalence as a proportion between 0 and 1 if available. Example: 8 percent becomes 0.08. This is the proportion with disease at baseline.",
         remission_rate = "Enter remission rate per person-year if relevant. For many chronic non-remitting diseases, enter 0 if that is the explicit modelling assumption. Leave blank only if remission is unknown and should be estimated or reviewed.",
-        excess_mortality_rate = "Enter excess mortality among people with the disease, per person-year, if available. This is not the all-cause mortality rate.",
+        excess_mortality_rate = "Enter excess mortality among people with the disease, per person-year, if available. This is not the all-cause mortality rate and not disease-specific mortality evidence.",
+        disease_mortality_rate = "Enter disease-specific mortality evidence per person-year if available, such as mortality attributable to this disease. This is the `mortality` evidence used by disease consistency solvers and is distinct from `excess_mortality_rate`.",
         case_fatality_rate = "Enter the case fatality rate per person-year if this is the parameter used by your disease model. Do not duplicate excess mortality unless that equivalence is a deliberate assumption.",
         disability_weight = "Enter disease-specific disability weight between 0 and 1. Example: 0 means no disability and 1 means equivalent to death. This is not all-cause pYLD.",
         source = id_source,
         notes = "Record assumptions, especially when remission is set to 0 or when incidence/prevalence values were converted from published units."
       ),
       c(
-        "For DisMod, aim to provide at least three of incidence, prevalence, remission, excess mortality, and case fatality.",
+        "For DisMod-lite, aim to provide at least three of incidence, prevalence, remission, excess mortality, and case fatality.",
+        "`disease_mortality_rate` is disease-specific mortality evidence for consistency solvers; do not fill it by copying excess mortality unless that is a documented source assumption.",
         "Use blank for unknown values, not zero.",
         "Prevalence and disability weight should be between 0 and 1."
       )
     ),
     "06_dismod_input_skeleton" = schema_file(
-      "Provides a long-format DisMod input skeleton. This can be filled directly or populated from `05_disease_epidemiology_raw.csv`.",
-      "One row per age, sex, stratum, disease, and DisMod parameter.",
+      "Provides a long-format disease-consistency solver evidence skeleton. This can be filled directly or populated from `05_disease_epidemiology_raw.csv`.",
+      "One row per age, sex, stratum, disease, and solver evidence parameter.",
       list(
         age_start = id_age,
         age_end = id_age_end,
@@ -218,7 +220,7 @@ template_file_dictionary <- function() {
         sex = id_sex,
         stratum = id_stratum,
         disease = id_disease,
-        parameter = "Generated DisMod parameter name. Allowed values include incidence, prevalence, remission, excess_mortality, and case_fatality.",
+        parameter = "Generated solver evidence parameter name. Allowed values include incidence, prevalence, remission, excess_mortality, case_fatality, and mortality. `mortality` means disease-specific mortality evidence, not excess mortality among people with disease.",
         mean_value = "Enter the best estimate for this parameter. Use per person-year for rates and 0 to 1 for proportions.",
         lower_95 = "Optional. Enter lower 95 percent uncertainty bound on the same scale as `mean_value`.",
         upper_95 = "Optional. Enter upper 95 percent uncertainty bound on the same scale as `mean_value`.",
@@ -229,8 +231,9 @@ template_file_dictionary <- function() {
       ),
       c(
         "`lower_95` should be less than or equal to `mean_value`; `upper_95` should be greater than or equal to `mean_value`.",
-        "Prevalence rows are proportions, while incidence/remission/mortality rows are rates.",
-        "DisMod usually needs at least three epidemiological parameter types per disease."
+        "Prevalence rows are proportions, while incidence, remission, mortality, excess mortality, and case fatality rows are rates.",
+        "`mortality` is explicit disease-specific mortality evidence for consistency solvers and must not be inferred from `excess_mortality`.",
+        "DisMod-lite usually needs at least three epidemiological parameter types per disease."
       )
     ),
     "07_bau_trends" = schema_file(
@@ -325,18 +328,23 @@ template_file_dictionary <- function() {
     ),
     "11_stratum_rate_ratios" = schema_file(
       "Collects rate ratios needed to disaggregate aggregate rates across equity or population strata.",
-      "One row per stratum.",
+      "One row per age, sex, stratum, and disaggregated parameter.",
       list(
+        age_start = id_age,
+        age_end = id_age_end,
+        age_label = id_age_label,
+        sex = id_sex,
         stratum = id_stratum,
-        acmr_rate_ratio = "Enter all-cause mortality rate ratio for this stratum compared with the reference stratum.",
-        morbidity_rate_ratio = "Enter all-cause morbidity or pYLD rate ratio for this stratum compared with the reference stratum.",
+        parameter = "Generated parameter to disaggregate. Allowed values are acmr, morbidity, incidence, remission, excess_mortality, case_fatality, and mortality.",
+        rate_ratio = "Enter the rate ratio for this stratum and parameter compared with the reference stratum.",
         reference_stratum = "Enter the stratum used as the reference, such as Least_deprived or Q5. The reference stratum usually has rate ratio 1.",
         source = id_source,
-        notes = "Record whether ratios are age-standardised, sex-specific, disease-specific, or borrowed from another population."
+        notes = "Record whether ratios are observed for this age-sex group, age-standardised, disease-specific, or borrowed from another population."
       ),
       c(
         "Reference stratum should usually have rate ratio 1.",
         "Rate ratios should be positive.",
+        "Each generated age, sex, stratum, and parameter combination should have one row.",
         "Be explicit about whether the direction is deprived versus least deprived or the reverse."
       )
     ),
@@ -457,7 +465,8 @@ column_requirement_dictionary <- function() {
       generated = common_generated,
       conditional = c(
         "incidence_rate", "prevalence", "remission_rate",
-        "excess_mortality_rate", "case_fatality_rate"
+        "excess_mortality_rate", "disease_mortality_rate",
+        "case_fatality_rate"
       ),
       required = c("disability_weight", "source"),
       optional = "notes"
@@ -492,7 +501,7 @@ column_requirement_dictionary <- function() {
     ),
     "11_stratum_rate_ratios" = list(
       generated = common_generated,
-      required = c("acmr_rate_ratio", "morbidity_rate_ratio", "reference_stratum", "source"),
+      required = c("rate_ratio", "reference_stratum", "source"),
       optional = "notes"
     ),
     "12_costs" = list(
@@ -513,6 +522,7 @@ column_validation_dictionary <- function() {
   generated <- list(type = "generated_id")
   integer <- list(type = "integer")
   year <- list(type = "calendar_year")
+  currency <- list(type = "currency_code")
 
   common_generated <- list(
     age_start = generated,
@@ -551,13 +561,14 @@ column_validation_dictionary <- function() {
       prevalence = proportion,
       remission_rate = rate,
       excess_mortality_rate = rate,
+      disease_mortality_rate = rate,
       case_fatality_rate = rate,
       disability_weight = proportion,
       source = text,
       notes = text
     )),
     "06_dismod_input_skeleton" = with_common(list(
-      parameter = list(type = "allowed_values", allowed_values = c("incidence", "prevalence", "remission", "excess_mortality", "case_fatality")),
+      parameter = list(type = "allowed_values", allowed_values = c("incidence", "prevalence", "remission", "excess_mortality", "case_fatality", "mortality")),
       mean_value = list(type = "dismod_parameter_value"),
       lower_95 = list(type = "dismod_parameter_value"),
       upper_95 = list(type = "dismod_parameter_value"),
@@ -570,8 +581,14 @@ column_validation_dictionary <- function() {
     "08_risk_factor_prevalence" = with_common(list(prevalence_BAU = proportion, prevalence_intervention = proportion, source = text, notes = text)),
     "09_relative_risks" = with_common(list(rr = relative_risk, rr_lower = relative_risk, rr_upper = relative_risk, reference_category = text, source = text, notes = text)),
     "10_direct_intervention_effects" = with_common(list(incidence_rr = relative_risk, cfr_rr = relative_risk, morbidity_rr = relative_risk, coverage = proportion, source = text, notes = text)),
-    "11_stratum_rate_ratios" = with_common(list(acmr_rate_ratio = relative_risk, morbidity_rate_ratio = relative_risk, reference_stratum = text, source = text, notes = text)),
-    "12_costs" = with_common(list(disease_cost = non_negative, background_cost = non_negative, currency = text, price_year = year, source = text, notes = text))
+    "11_stratum_rate_ratios" = with_common(list(
+      parameter = list(type = "allowed_values", allowed_values = c("acmr", "morbidity", "incidence", "remission", "excess_mortality", "case_fatality", "mortality")),
+      rate_ratio = relative_risk,
+      reference_stratum = text,
+      source = text,
+      notes = text
+    )),
+    "12_costs" = with_common(list(disease_cost = non_negative, background_cost = non_negative, currency = currency, price_year = year, source = text, notes = text))
   )
 }
 
@@ -633,8 +650,8 @@ pmslt_disease_epi_schema <- function() {
     columns = schema,
     checks = c(
       "Raw disease epidemiology may remain age-banded in 05_disease_epidemiology_raw.csv and is validated by validate_raw_inputs().",
-      "DisMod-lite outputs are teaching/local diagnostic files used to disaggregate and prepare this canonical PMSLT-ready file.",
-      "Downstream disease modules should consume pmslt_disease_epi.csv rather than raw disease epidemiology or intermediate DisMod-lite files.",
+      "solve_disease_consistency() writes this canonical PMSLT-ready file from checked disease consistency solver outputs.",
+      "Downstream disease modules should consume pmslt_disease_epi.csv rather than raw disease epidemiology or intermediate solver diagnostic files.",
       "The PMSLT-ready disease file uses exact integer age; age_start, age_end, and age_label belong to raw inputs or diagnostic/reporting files.",
       "Rates should be non-negative and per person-year.",
       "prevalence_initial and disability_weight should be between 0 and 1."

@@ -8,9 +8,8 @@ next_pmslt_step(stage = NULL, object = NULL)
 }
 \arguments{
 \item{stage}{Optional workflow stage. Supported values are \code{"spec"},
-\code{"templates"}, \code{"raw_inputs"}, \code{"raw_validation"}, \code{"dismod_lite"},
-\code{"pmslt_disease_inputs"}, \code{"disease_lifetable"}, \code{"interventions"}, and
-\code{"halys"}.}
+\code{"templates"}, \code{"raw_inputs"}, \code{"raw_validation"}, \code{"disease_consistency"},
+\code{"interventions"}, \code{"lifetable"}, \code{"summaries"}, and \code{"reporting"}.}
 
 \item{object}{Optional pmslttools object used to infer the workflow stage
 when \code{stage} is not supplied. Inference is conservative and currently

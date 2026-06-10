@@ -45,6 +45,8 @@ test_that("template builder includes risk factor files", {
     sort(unique(templates[["09_relative_risks"]]$risk_category)),
     c("Current", "Former", "Never")
   )
+  expect_true("disease_mortality_rate" %in% names(templates[["05_disease_epidemiology_raw"]]))
+  expect_true("mortality" %in% templates[["06_dismod_input_skeleton"]]$parameter)
 })
 
 test_that("central schemas describe generated template columns", {
@@ -82,9 +84,19 @@ test_that("central schemas describe generated template columns", {
     "incidence",
     fixed = TRUE
   )
+  expect_match(
+    dismod_schema$allowed_values[dismod_schema$column == "parameter"],
+    "mortality",
+    fixed = TRUE
+  )
 
   raw_disease_schema <- schemas[["05_disease_epidemiology_raw"]]$columns
   expect_true(all(c("age_start", "age_end", "age_label") %in% raw_disease_schema$column))
+  expect_true("disease_mortality_rate" %in% raw_disease_schema$column)
+  expect_equal(
+    raw_disease_schema$validation_type[raw_disease_schema$column == "disease_mortality_rate"],
+    "non_negative_rate"
+  )
   expect_false("age" %in% raw_disease_schema$column)
 })
 
@@ -108,6 +120,8 @@ test_that("draft_input_templates writes a beginner guide", {
 
   expect_true(file.exists(guide_path))
   expect_true(any(grepl("05_disease_epidemiology_raw.csv", guide, fixed = TRUE)))
+  expect_true(any(grepl("disease-specific mortality evidence", guide, fixed = TRUE)))
+  expect_true(any(grepl("must not be inferred from `excess_mortality`", guide, fixed = TRUE)))
   expect_true(any(grepl("`prevalence_intervention` *", guide, fixed = TRUE)))
   expect_true(any(grepl("Validation: proportion_0_1.", guide, fixed = TRUE)))
   expect_true(any(grepl("per person-year", guide, fixed = TRUE)))

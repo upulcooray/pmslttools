@@ -295,7 +295,7 @@ raw_issue_next_step <- function(issue_count, error_count, warning_count) {
     return("No raw input issues were found. You can proceed to the next workflow step.")
   }
   if (error_count > 0) {
-    return("Fix the error issues before proceeding to DisMod-lite or PMSLT-ready input preparation.")
+    return("Fix the error issues before proceeding to disease consistency solving or PMSLT-ready input preparation.")
   }
   if (warning_count > 0) {
     return("You can proceed, but review the warnings first to make sure the raw inputs are intentional.")
@@ -542,6 +542,7 @@ validate_one_raw_file <- function(path, file, schema, spec) {
   issues <- validate_age_consistency(issues, data, file)
   issues <- validate_uncertainty_consistency(issues, data, file)
   issues <- validate_duplicate_key_rows(issues, data, file, schema)
+  issues <- validate_stratum_rate_ratio_completeness(issues, data, file, schema, spec)
 
   issues
 }
@@ -635,6 +636,21 @@ validate_column_values <- function(issues, data, file, column, validation, spec)
     }
   }
 
+  if (type == "currency_code") {
+    invalid_currency <- present & !grepl("^[A-Z]{3}$", as.character(values))
+    for (row in which(invalid_currency)) {
+      issues <- append_validation_issue(
+        issues,
+        file = file,
+        row = row,
+        column = column,
+        severity = "error",
+        message = paste0("Column '", column, "' must contain a three-letter currency code."),
+        suggested_fix = paste0("Use an uppercase ISO-style currency code such as AUD, NZD, USD, or GBP in '", column, "'.")
+      )
+    }
+  }
+
   issues
 }
 
@@ -711,7 +727,6 @@ validate_numeric_bounds <- function(issues, file, column, type, values, checkabl
       )
     }
   }
-
   issues
 }
 
@@ -836,6 +851,51 @@ validate_duplicate_key_rows <- function(issues, data, file, schema) {
       )
     )
   }
+  issues
+}
+
+validate_stratum_rate_ratio_completeness <- function(issues, data, file, schema, spec) {
+  if (!identical(schema$template_name, "11_stratum_rate_ratios") || is.null(spec)) {
+    return(issues)
+  }
+  needed_columns <- c("age_start", "sex", "stratum", "parameter")
+  if (!all(needed_columns %in% names(data))) {
+    return(issues)
+  }
+
+  expected <- expand.grid(
+    age_start = as.character(spec$ages$age_start),
+    sex = as.character(spec$sexes),
+    stratum = as.character(spec$strata),
+    parameter = stratum_rate_ratio_parameter_names(),
+    stringsAsFactors = FALSE
+  )
+  observed <- data[needed_columns]
+  observed[] <- lapply(observed, function(x) {
+    x <- trimws(as.character(x))
+    x[is.na(x)] <- ""
+    x
+  })
+  names(observed) <- needed_columns
+
+  missing <- expected[!equity_key_in(expected, observed, needed_columns), , drop = FALSE]
+  for (i in seq_len(nrow(missing))) {
+    issues <- append_validation_issue(
+      issues,
+      file = file,
+      row = NA_integer_,
+      column = paste(needed_columns, collapse = ", "),
+      severity = "error",
+      message = paste0(
+        "Stratum rate ratios are incomplete for age_start=", missing$age_start[[i]],
+        ", sex=", missing$sex[[i]],
+        ", stratum=", missing$stratum[[i]],
+        ", parameter=", missing$parameter[[i]], "."
+      ),
+      suggested_fix = "Add one row for every generated age_start, sex, stratum, and parameter combination, or regenerate the raw templates."
+    )
+  }
+
   issues
 }
 

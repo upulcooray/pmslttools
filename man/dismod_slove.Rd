@@ -33,7 +33,8 @@ Invisibly returns a list containing solved wide results, solved long results, an
 \description{
 Reads a PMSLT \code{input_raw} directory, expands coarse disease age groups to
 exact single-year ages, and fills missing values where they can be identified
-from simple steady-state illness-death equations. This is intentionally a small
-deterministic teaching/local diagnostic helper, not a replacement for full
-DisMod-MR.
+from simple steady-state illness-death equations. This is a small deterministic
+package-native solver and diagnostic helper. Use
+\code{\link[=solve_disease_consistency]{solve_disease_consistency()}} when you want the full beginner-facing step
+that also writes \code{pmslt_disease_epi.csv}.
 }

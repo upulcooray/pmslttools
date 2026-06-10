@@ -43,7 +43,7 @@ validate_pmslt_disease_inputs <- function(data) {
       schema$file,
       " must use exact single-year `age`, not age-band columns: ",
       paste(age_band_cols, collapse = ", "),
-      ". Raw age-banded disease inputs belong in 05_disease_epidemiology_raw.csv; run DisMod-lite, mock DisMod, or a future DisMod-MR adapter before using this PMSLT-ready file.",
+      ". Raw age-banded disease inputs belong in 05_disease_epidemiology_raw.csv; run solve_disease_consistency() before using this PMSLT-ready file.",
       call. = FALSE
     )
   }

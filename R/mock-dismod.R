@@ -104,7 +104,8 @@ generate_mock_pmslt_inputs <- function(output_dir = "mock_inputs_raw",
 #'
 #' This function creates deterministic, teaching-only outputs that look like a
 #' post-DisMod correction file. It uses simple illness-death consistency
-#' equations and age smoothing. It is not a replacement for DisMod-MR. When
+#' equations and age smoothing. It is demonstration/test-data generation only,
+#' not a solver option for [solve_disease_consistency()]. When
 #' `continuous_age = TRUE`, it also writes the canonical single-year
 #' PMSLT-ready disease input `pmslt_disease_epi.csv` for downstream disease
 #' modules.
@@ -594,6 +595,7 @@ fill_mock_disease_epidemiology <- function(disease) {
   disease$incidence_rate <- round(0.004 * exp((age_mid - 40) / 30) * sex_factor * disease_factor, 6)
   disease$remission_rate <- ifelse(disease$disease == "CHD", 0, 0.005)
   disease$excess_mortality_rate <- round(0.012 * exp((age_mid - 40) / 35) * disease_factor, 6)
+  disease$disease_mortality_rate <- round(0.006 * exp((age_mid - 40) / 32) * disease_factor, 6)
 
   coherent <- disease$incidence_rate /
     (disease$incidence_rate + disease$remission_rate + disease$excess_mortality_rate)
@@ -612,7 +614,8 @@ fill_mock_dismod_skeleton <- function(dismod_input, disease) {
     prevalence = "prevalence",
     remission = "remission_rate",
     excess_mortality = "excess_mortality_rate",
-    case_fatality = "case_fatality_rate"
+    case_fatality = "case_fatality_rate",
+    mortality = "disease_mortality_rate"
   )
   key <- paste(disease$age_start, disease$sex, disease$stratum, disease$disease)
   disease_lookup <- split(disease, key)

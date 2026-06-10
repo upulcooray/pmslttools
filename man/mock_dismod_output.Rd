@@ -27,7 +27,8 @@ Invisibly returns a list with \code{wide}, \code{long}, \code{diagnostics},
 \description{
 This function creates deterministic, teaching-only outputs that look like a
 post-DisMod correction file. It uses simple illness-death consistency
-equations and age smoothing. It is not a replacement for DisMod-MR. When
+equations and age smoothing. It is demonstration/test-data generation only,
+not a solver option for \code{\link[=solve_disease_consistency]{solve_disease_consistency()}}. When
 \code{continuous_age = TRUE}, it also writes the canonical single-year
 PMSLT-ready disease input \code{pmslt_disease_epi.csv} for downstream disease
 modules.

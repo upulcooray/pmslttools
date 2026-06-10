@@ -1,0 +1,8 @@
+^\.agents$
+^\.claude$
+^\.DS_Store$
+^\.Rproj\.user$
+^.*\.Rcheck$
+^pmslttools_[0-9.]+\.tar\.gz$
+^CODEX\.md$
+^demo_mock_inputs_raw$

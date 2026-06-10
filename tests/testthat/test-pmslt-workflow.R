@@ -119,3 +119,68 @@ test_that("intervention runner accepts exact-age disease inputs with age-banded 
   expect_true(any(chd_male$cfr_multiplier < 1))
   expect_true(any(abs(chd_male$delta_mortality) > 0, na.rm = TRUE))
 })
+
+test_that("intervention outputs bridge into comparable BAU and intervention lifetables", {
+  out <- tempfile("mock_inputs_")
+  generate_mock_pmslt_inputs(output_dir = out)
+  mock_dismod_output(input_dir = out)
+
+  disease_epi <- read_pmslt_disease_inputs(file.path(out, "mock_dismod_output", "pmslt_disease_epi.csv"))
+  population <- unique(disease_epi[disease_epi$time_step == 0, c("age", "sex", "stratum")])
+  population$population <- 1000
+  mortality <- population[c("age", "sex", "stratum")]
+  mortality$mortality_rate <- 0.02
+  morbidity <- population[c("age", "sex", "stratum")]
+  morbidity$morbidity_rate <- 0.10
+
+  pif_only <- run_pmslt_interventions(
+    disease_epi = disease_epi,
+    risk_prevalence = file.path(out, "08_risk_factor_prevalence.csv"),
+    relative_risks = file.path(out, "09_relative_risks.csv")
+  )
+  direct_only <- run_pmslt_interventions(
+    disease_epi = disease_epi,
+    direct_effects = file.path(out, "10_direct_intervention_effects.csv")
+  )
+  combined <- run_pmslt_interventions(
+    disease_epi = disease_epi,
+    risk_prevalence = file.path(out, "08_risk_factor_prevalence.csv"),
+    relative_risks = file.path(out, "09_relative_risks.csv"),
+    direct_effects = file.path(out, "10_direct_intervention_effects.csv")
+  )
+
+  bridge <- run_pmslt_lifetable_interventions(
+    population = population,
+    mortality = mortality,
+    morbidity = morbidity,
+    intervention_effects = combined,
+    horizon = 2
+  )
+  pif_bridge <- run_pmslt_lifetable_interventions(
+    population = population,
+    mortality = mortality,
+    morbidity = morbidity,
+    intervention_effects = pif_only,
+    horizon = 2
+  )
+  direct_bridge <- run_pmslt_lifetable_interventions(
+    population = population,
+    mortality = mortality,
+    morbidity = morbidity,
+    intervention_effects = direct_only,
+    horizon = 2
+  )
+  first_arm <- bridge$interventions[[1]]
+
+  expect_s3_class(bridge$bau, "pmslt_lifetable")
+  expect_s3_class(pif_bridge$interventions[[1]], "pmslt_lifetable")
+  expect_s3_class(direct_bridge$interventions[[1]], "pmslt_lifetable")
+  expect_equal(names(bridge$interventions), c("Tobacco tax", "Tobacco tax plus acute care"))
+  expect_true(all(c("mortality_rate_BAU", "total_delta_mortality", "morbidity_rate_BAU", "total_delta_morbidity") %in% names(first_arm)))
+  expect_true(is.data.frame(attr(first_arm, "disease_deltas")))
+  expect_true(any(first_arm$yld != bridge$bau$yld))
+  expect_true(any(bridge$comparisons[["Tobacco tax plus acute care"]]$deaths_difference != 0))
+  expect_true(any(pif_only$delta_mortality != 0))
+  expect_true(any(direct_only$delta_mortality != 0))
+  expect_true(any(combined$delta_mortality != 0))
+})

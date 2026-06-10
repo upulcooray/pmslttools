@@ -3,8 +3,9 @@
 #' Reads a PMSLT `input_raw` directory, expands coarse disease age groups to
 #' exact single-year ages, and fills missing values where they can be identified
 #' from simple steady-state illness-death equations. This is intentionally a
-#' small deterministic teaching/local diagnostic helper, not a replacement for
-#' full DisMod-MR.
+#' small deterministic package-native solver and diagnostic helper. Use
+#' [solve_disease_consistency()] when you want the full beginner-facing step
+#' that also writes `pmslt_disease_epi.csv`.
 #'
 #' @param input_dir Directory created by [draft_input_templates()].
 #' @param output_dir Directory where solved CSV files should be written.

@@ -50,6 +50,30 @@ lifetable_disease_epi <- function(diseases = "CHD") {
   out
 }
 
+lifetable_intervention_effects <- function(interventions = "Care pathway",
+                                           diseases = "CHD",
+                                           horizon = 1) {
+  grid <- expand.grid(
+    intervention = interventions,
+    disease = diseases,
+    time_step = seq_len(horizon) - 1L,
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+  grid$incidence_BAU <- ifelse(grid$age == 40L, 0.010, 0.020)
+  grid$incidence_Int <- grid$incidence_BAU * 0.90
+  grid$disease_mortality_BAU <- ifelse(grid$age == 40L, 0.006, 0.008)
+  grid$disease_mortality_Int <- grid$disease_mortality_BAU - ifelse(grid$age == 40L, 0.002, 0.003)
+  grid$disease_morbidity_BAU <- ifelse(grid$age == 40L, 0.020, 0.060)
+  grid$disease_morbidity_Int <- grid$disease_morbidity_BAU - ifelse(grid$age == 40L, 0.010, 0.020)
+  grid$delta_mortality <- grid$disease_mortality_Int - grid$disease_mortality_BAU
+  grid$delta_morbidity <- grid$disease_morbidity_Int - grid$disease_morbidity_BAU
+  grid
+}
+
 age_band_summary_spec <- function() {
   pmslt_spec(
     intervention = "Test",
@@ -539,6 +563,91 @@ test_that("invalid disease inputs are rejected by existing disease validation", 
     "non-negative",
     fixed = TRUE
   )
+})
+
+test_that("intervention disease effects bridge into adjusted all-cause lifetable rates", {
+  result <- run_pmslt_lifetable_interventions(
+    lifetable_population(),
+    lifetable_mortality(),
+    lifetable_morbidity(),
+    intervention_effects = lifetable_intervention_effects(),
+    horizon = 1
+  )
+  intervention <- result$interventions[["Care pathway"]]
+  comparison <- result$comparisons[["Care pathway"]]
+  long <- attr(intervention, "disease_deltas")
+
+  expect_s3_class(intervention, "pmslt_lifetable")
+  expect_equal(intervention$mortality_rate, lifetable_mortality()$mortality_rate + c(-0.002, -0.003))
+  expect_equal(intervention$morbidity_rate, lifetable_morbidity()$morbidity_rate + c(-0.010, -0.020))
+  expect_equal(intervention$deaths, intervention$population * intervention$mortality_rate)
+  expect_equal(intervention$person_years, intervention$population - 0.5 * intervention$deaths)
+  expect_equal(intervention$yld, intervention$person_years * intervention$morbidity_rate)
+  expect_true(comparison$deaths_difference < 0)
+  expect_true(is.data.frame(long))
+  expect_equal(long$scenario, c("Care pathway", "Care pathway"))
+})
+
+test_that("intervention disease deltas aggregate across multiple diseases and arms", {
+  effects <- lifetable_intervention_effects(
+    interventions = c("Care pathway", "Care pathway plus prevention"),
+    diseases = c("CHD", "Stroke"),
+    horizon = 1
+  )
+  effects$delta_mortality[effects$disease == "Stroke"] <- effects$delta_mortality[effects$disease == "Stroke"] / 2
+  effects$disease_mortality_Int <- effects$disease_mortality_BAU + effects$delta_mortality
+
+  result <- run_pmslt_lifetable_interventions(
+    lifetable_population(),
+    lifetable_mortality(),
+    lifetable_morbidity(),
+    intervention_effects = effects,
+    horizon = 1
+  )
+  intervention <- result$interventions[["Care pathway"]]
+
+  expected_delta <- as.numeric(tapply(
+    effects$delta_mortality[effects$intervention == "Care pathway"],
+    effects$age[effects$intervention == "Care pathway"],
+    sum
+  ))
+  expect_equal(names(result$interventions), c("Care pathway", "Care pathway plus prevention"))
+  expect_equal(intervention$total_delta_mortality, expected_delta)
+  expect_true(all(c("total_disease_cases", "total_disease_deaths", "total_disease_yld") %in% names(intervention)))
+})
+
+test_that("intervention lifetable ageing uses intervention survivors", {
+  population <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    population = c(100, 0),
+    stringsAsFactors = FALSE
+  )
+  mortality <- data.frame(
+    age = c(40L, 41L),
+    sex = "female",
+    stratum = "total",
+    mortality_rate = c(0.1, 0.2),
+    stringsAsFactors = FALSE
+  )
+  effects <- lifetable_intervention_effects(horizon = 2)
+  effects$delta_mortality <- ifelse(effects$time_step == 0 & effects$age == 40L, -0.05, 0)
+  effects$disease_mortality_BAU <- 0.06
+  effects$disease_mortality_Int <- effects$disease_mortality_BAU + effects$delta_mortality
+
+  result <- run_pmslt_lifetable_interventions(
+    population,
+    mortality,
+    intervention_effects = effects,
+    horizon = 2
+  )
+  t1_age41 <- result$interventions[["Care pathway"]][
+    result$interventions[["Care pathway"]]$time_step == 1 &
+      result$interventions[["Care pathway"]]$age == 41,
+  ]
+
+  expect_equal(t1_age41$population, 95)
 })
 
 test_that("overall BAU summary totals all-cause lifetable metrics", {

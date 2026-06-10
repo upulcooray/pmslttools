@@ -203,6 +203,7 @@ disease_epidemiology_template <- function(disease_grid) {
     prevalence = NA_real_,
     remission_rate = NA_real_,
     excess_mortality_rate = NA_real_,
+    disease_mortality_rate = NA_real_,
     case_fatality_rate = NA_real_,
     disability_weight = NA_real_,
     source = NA_character_,
@@ -216,7 +217,8 @@ dismod_input_template <- function(disease_grid) {
     "prevalence",
     "remission",
     "excess_mortality",
-    "case_fatality"
+    "case_fatality",
+    "mortality"
   )
   out <- merge(
     disease_grid,
@@ -312,14 +314,27 @@ direct_effect_template <- function(spec, disease_grid) {
 }
 
 stratum_rate_ratio_template <- function(spec) {
-  data.frame(
-    stratum = spec$strata,
-    acmr_rate_ratio = NA_real_,
-    morbidity_rate_ratio = NA_real_,
+  grid <- merge(
+    spec$ages,
+    data.frame(sex = spec$sexes, stringsAsFactors = FALSE),
+    all = TRUE
+  )
+  grid <- merge(
+    grid,
+    data.frame(stratum = spec$strata, stringsAsFactors = FALSE),
+    all = TRUE
+  )
+  grid <- merge(
+    grid,
+    data.frame(parameter = stratum_rate_ratio_parameter_names(), stringsAsFactors = FALSE),
+    all = TRUE
+  )
+  transform(
+    grid,
+    rate_ratio = NA_real_,
     reference_stratum = NA_character_,
     source = NA_character_,
-    notes = "Rate ratios are used for heterogeneity/disaggregation.",
-    stringsAsFactors = FALSE
+    notes = "Rate ratios are used for heterogeneity/disaggregation."
   )
 }
 

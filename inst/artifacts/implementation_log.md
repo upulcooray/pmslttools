@@ -3,6 +3,91 @@
 This log records stepwise package-building decisions so future work can resume
 without re-reading the full conversation.
 
+## 2026-05-31: Pact Integration And Real Disbayes Verification
+
+Reason:
+
+- Eight builder pacts were integrated into one package state.
+- `disbayes` was installed locally so the real optional solver branch could be
+  checked beyond the fake-fit adapter tests.
+
+Change:
+
+- Added disbayes preparation and execution bridge code behind
+  `solve_disease_consistency(solver = "disbayes")`.
+- Updated the bridge to call the real `disbayes` 1.1.1 API with a wide
+  age-indexed probability table, then map `disbayes::tidy()` outputs back to
+  canonical PMSLT rate-based disease inputs.
+- Added deterministic intervention-to-lifetable bridge, cost helpers, equity
+  disaggregation helpers, reporting/ICER helpers, and PSA scaffolding.
+- Added `.Rbuildignore` so `.agents/`, local check directories, and generated
+  package tarballs are excluded from source builds.
+
+Validation:
+
+- Installed `disbayes` 1.1.1 and its dependency stack into the user R library.
+- `remotes::install_local(".", upgrade = "never", dependencies = FALSE,
+  build_vignettes = FALSE, force = TRUE)` completed in a `radian` session.
+- `devtools::test()` passed after integration.
+- `R CMD build .` completed.
+- `R CMD check pmslttools_0.0.0.9009.tar.gz --no-manual --no-build-vignettes`
+  passed with status OK after `disbayes` was installed.
+- A direct real-disbayes smoke test passed using a 0:89 exact-age fixture with
+  `method = "opt"`, `draws = 0`, and `iter = 1000`.
+
+## 2026-05-25: Disease Consistency Solver Refactor Slice 1
+
+Reason:
+
+- The active roadmap shifted from an external DisMod-MR file-adapter path to a
+  package-native disease consistency solver workflow.
+- Beginners need one obvious step from checked raw disease inputs to canonical
+  `pmslt_disease_epi.csv`.
+- Disease-specific mortality evidence needs to be explicit and separate from
+  excess mortality among people with disease.
+
+Change:
+
+- Added `disease_mortality_rate` to the raw disease epidemiology schema,
+  template generation, guide text, raw validation, mock data, and tests.
+- Added `mortality` as an allowed `06_dismod_input_skeleton.csv` parameter and
+  described it as disease-specific mortality evidence for consistency solvers.
+- Added exported `solve_disease_consistency()`.
+- `solve_disease_consistency(solver = "dismod_slove")` runs the deterministic
+  solver, keeps the existing diagnostic CSVs, and writes validated
+  `pmslt_disease_epi.csv`.
+- `solve_disease_consistency(solver = "disbayes")` stops with a clear
+  not-yet-implemented message and does not add Stan/RStan dependencies.
+- Updated `next_pmslt_step()` so successful raw readiness points to
+  `solve_disease_consistency()` instead of direct `dismod_slove()`.
+- Removed the external DisMod-MR source files, tests, man pages, exports, and
+  README path from the active API.
+
+Boundary:
+
+- No real disbayes execution.
+- No Stan/RStan dependency.
+- No rename of `06_dismod_input_skeleton.csv`.
+- No `mock_dismod_output()` solver option.
+- No downstream PMSLT disease input schema change.
+
+Validation:
+
+- Added tests for the new mortality fields, high-level `dismod_slove` branch,
+  and `disbayes` placeholder error.
+- `devtools::document()` completed. Roxygen regenerated `NAMESPACE`,
+  `man/solve_disease_consistency.Rd`, and `man/next_pmslt_step.Rd`; existing
+  manually owned `.Rd` files were patched where needed.
+- `devtools::test()` passed with 521 tests.
+
+Related artifacts updated:
+
+- `README.md`
+- `CODEX.md`
+- `inst/artifacts/package_architecture.md`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+
 ## 2026-05-17: Direct Disease Effect Helper Clarified
 
 Reason:

@@ -9,7 +9,8 @@ run_pmslt_lifetable_bau(
   mortality,
   morbidity = NULL,
   horizon = NULL,
-  spec = NULL
+  spec = NULL,
+  stratum_rate_ratios = NULL
 )
 }
 \arguments{
@@ -33,6 +34,11 @@ otherwise baseline rates are reused every cycle.}
 \code{spec$horizon} when \code{spec} is supplied, otherwise defaults to 1.}
 
 \item{spec}{Optional \code{pmslt_spec} object.}
+
+\item{stratum_rate_ratios}{Optional data frame or CSV path from
+\verb{11_stratum_rate_ratios.csv}. When supplied, aggregate mortality and
+morbidity rates are disaggregated to the population strata before the BAU
+lifetable is executed.}
 }
 \value{
 A data frame with class \code{pmslt_lifetable}.
@@ -41,7 +47,9 @@ A data frame with class \code{pmslt_lifetable}.
 Runs the business-as-usual all-cause lifetable for multiple yearly cycles
 using exact single-year integer ages. This function only ages surviving
 population forward. It does not add births, migration, entrants, disease
-deltas, intervention effects, costs, equity disaggregation, or PSA.
+deltas, intervention effects, costs, or PSA. If \code{stratum_rate_ratios} is
+supplied, aggregate mortality and morbidity rates are first disaggregated to
+model strata.
 }
 \details{
 Population ageing is deterministic and transparent. At the next cycle,

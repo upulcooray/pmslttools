@@ -1,6 +1,6 @@
 # CODEX Notes for pmslttools
 
-Last updated: 2026-05-25
+Last updated: 2026-05-30
 
 ## Project Purpose
 
@@ -13,7 +13,7 @@ The package should guide users through:
 1. Defining a model with minimum required information.
 2. Generating project-specific raw input CSV templates.
 3. Collecting raw disease and intervention parameters.
-4. Running or preparing DisMod-style disease parameter processing.
+4. Running disease consistency solver processing.
 5. Producing `pmslt_disease_epi.csv` as the canonical post-DisMod disease input.
 6. Running modular PMSLT disease and intervention workflows.
 7. Initializing the deterministic all-cause BAU lifetable.
@@ -44,8 +44,8 @@ The package should guide users through:
    stage through `pmslt_spec(intervention_arms = ...)`.
 5. PIF-mediated effects and direct disease effects must remain conceptually
    separate.
-6. DisMod-lite and mock DisMod functions are teaching tools, not replacements
-   for real DisMod-MR.
+6. `dismod_slove()` is a valid package-native deterministic consistency
+   solver; `mock_dismod_output()` is demo/test-data generation only.
 7. Prefer base R unless a dependency clearly improves usability.
 8. Avoid broad refactors until schemas and workflow contracts are stable.
 9. Raw epidemiology templates may remain age-banded; future PMSLT engine
@@ -59,6 +59,9 @@ The package should guide users through:
 12. HALY summaries are reporting-only in this slice. Calculate them from
     existing `person_years` and `yld`; do not add discounting, age weighting,
     costs, DALYs, PSA, or engine changes here.
+13. Do not reinterpret `excess_mortality_rate` as disease mortality evidence.
+    Use `disease_mortality_rate` in the raw disease file and `mortality` in the
+    long solver skeleton for explicit disease-specific mortality evidence.
 
 ## Current Public API
 
@@ -72,11 +75,8 @@ The package should guide users through:
 - `check_raw_input_readiness()`
 - `write_input_template_guide()`
 - `diagnose_missing_parameters()`
+- `solve_disease_consistency()`
 - `dismod_slove()`
-- `prepare_dismod_mr_inputs()`
-- `read_dismod_mr_outputs()`
-- `validate_dismod_mr_outputs()`
-- `prepare_pmslt_disease_inputs_from_dismod_mr()`
 - `mock_pmslt_spec()`
 - `generate_mock_pmslt_inputs()`
 - `mock_dismod_output()`
@@ -98,6 +98,9 @@ The package should guide users through:
 - `compare_pmslt_results()`
 - `calculate_halys()`
 - `compare_halys()`
+- `summarise_costs()`
+- `compare_costs()`
+- `calculate_icers()`
 
 ## Important Files
 
@@ -114,6 +117,8 @@ The package should guide users through:
 - `R/main-lifetable.R`: deterministic BAU all-cause lifetable initialization,
   single-year ageing, disease-attributable quantity attachment, and summary
   helpers including simple HALY reporting.
+- `R/reporting.R`: deterministic cost summaries, cost comparisons, and ICER
+  calculation from already-computed incremental costs and incremental HALYs.
 - `tests/testthat/`: package tests.
 
 ## Current Workflow Shape
@@ -133,80 +138,69 @@ spec <- pmslt_spec(
 )
 
 draft_input_templates(spec, "inputs_raw")
-next_pmslt_step("raw_inputs")
-mock_dismod_output("inputs_raw")
+readiness <- check_raw_input_readiness("inputs_raw", spec)
+if (readiness$can_proceed) {
+  solve_disease_consistency("inputs_raw")
+}
 
 results <- run_pmslt_interventions(
-  disease_epi = "inputs_raw/mock_dismod_output/pmslt_disease_epi.csv",
+  disease_epi = "inputs_raw/disease_consistency_results/pmslt_disease_epi.csv",
   risk_prevalence = "inputs_raw/08_risk_factor_prevalence.csv",
   relative_risks = "inputs_raw/09_relative_risks.csv",
   direct_effects = "inputs_raw/10_direct_intervention_effects.csv"
 )
 
-bau_lifetable <- initialize_pmslt_lifetable(
-  population = data.frame(
-    age = 40:41,
-    sex = "female",
-    stratum = "total",
-    population = c(1000, 900)
-  ),
-  mortality = data.frame(
-    age = 40:41,
-    sex = "female",
-    stratum = "total",
-    mortality_rate = c(0.01, 0.02)
-  )
+population <- data.frame(
+  age = 40:41,
+  sex = "female",
+  stratum = "total",
+  population = c(1000, 900)
 )
 
-bau_cycles <- run_pmslt_lifetable_bau(
-  population = data.frame(
-    age = 40:41,
-    sex = "female",
-    stratum = "total",
-    population = c(1000, 900)
-  ),
-  mortality = data.frame(
-    age = 40:41,
-    sex = "female",
-    stratum = "total",
-    mortality_rate = c(0.01, 0.02)
-  ),
-  horizon = 5
+mortality <- data.frame(
+  age = 40:41,
+  sex = "female",
+  stratum = "total",
+  mortality_rate = c(0.01, 0.02)
 )
 
-disease_attached <- integrate_disease_deltas(
-  lifetable = run_pmslt_lifetable_bau(
-    population = data.frame(
-      age = 40:41,
-      sex = "female",
-      stratum = "total",
-      population = c(1000, 900)
-    ),
-    mortality = data.frame(
-      age = 40:41,
-      sex = "female",
-      stratum = "total",
-      mortality_rate = c(0.01, 0.02)
-    ),
-    horizon = 1
-  ),
-  disease_epi = "inputs_raw/mock_dismod_output/pmslt_disease_epi.csv"
+morbidity <- data.frame(
+  age = 40:41,
+  sex = "female",
+  stratum = "total",
+  yld_rate = c(0.04, 0.05)
 )
 
-summarise_pmslt_results(disease_attached)
-summarise_pmslt_results(disease_attached, by = c("disease", "age"))
-summarise_pmslt_results(disease_attached, by = c("disease", "age_band"))
-calculate_halys(disease_attached)
-calculate_halys(disease_attached, by = "age_band")
-compare_halys(disease_attached, disease_attached)
+bau <- run_pmslt_lifetable_bau(
+  population,
+  mortality,
+  morbidity,
+  horizon = 2,
+  spec = spec
+)
+
+summarise_pmslt_results(bau)
+summarise_pmslt_results(bau, by = "age_band")
+calculate_halys(bau, by = "age_band")
 ```
+
+Active beginner examples should follow this order:
+`pmslt_spec()` -> `draft_input_templates()` -> `check_raw_input_readiness()` ->
+`solve_disease_consistency()` -> `run_pmslt_interventions()` ->
+`run_pmslt_lifetable_bau()` -> `summarise_pmslt_results()` /
+`calculate_halys()`. Mock DisMod examples and direct `dismod_slove()` calls are
+allowed as conceptual or lower-level demonstrations only, not as the main active
+workflow.
 
 ## Current Known Issues
 
 1. `run_pmslt_disease_lifetable()` is not a full PMSLT model yet. It is a
    disease-specific module.
-2. Real DisMod-MR file adapters now cover input preparation, external output
-   reading/validation, and conversion to canonical PMSLT disease inputs.
+2. The external DisMod-MR active API has been removed in favour of
+   `solve_disease_consistency()`. `solver = "disbayes"` is the default real
+   solver bridge when the optional `disbayes`/Stan stack is installed;
+   `solver = "dismod_slove"` remains available for deterministic workflows
+   without optional solver infrastructure.
 3. `demo_mock_inputs_raw/` may need regeneration after the latest multi-arm
    direct-effect changes.
 4. `initialize_pmslt_lifetable()` runs one BAU time step only.

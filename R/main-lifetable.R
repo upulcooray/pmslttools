@@ -3,7 +3,8 @@
 #' Creates the business-as-usual starting state for the main all-cause PMSLT
 #' lifetable. This first slice only runs one deterministic time step. It does
 #' not age the population forward, apply disease deltas, model interventions,
-#' add costs, or run PSA.
+#' add costs, or run PSA. If `stratum_rate_ratios` is supplied, aggregate
+#' mortality and morbidity rates are first disaggregated to model strata.
 #'
 #' @param population Data frame or CSV path. Required columns are `age`, `sex`,
 #'   `stratum`, and `population`. The template-style column
@@ -17,6 +18,10 @@
 #'   When omitted, `morbidity_rate` is set to zero.
 #' @param spec Optional `pmslt_spec` object. It is validated when supplied and
 #'   stored as an attribute on the result.
+#' @param stratum_rate_ratios Optional data frame or CSV path from
+#'   `11_stratum_rate_ratios.csv`. When supplied, aggregate mortality and
+#'   morbidity rates are disaggregated to the population strata before the
+#'   one-step lifetable is calculated.
 #'
 #' @return A data frame with class `pmslt_lifetable`.
 #' @export
@@ -38,7 +43,8 @@
 initialize_pmslt_lifetable <- function(population,
                                        mortality,
                                        morbidity = NULL,
-                                       spec = NULL) {
+                                       spec = NULL,
+                                       stratum_rate_ratios = NULL) {
   if (!is.null(spec)) {
     validate_spec(spec)
   }
@@ -73,13 +79,23 @@ initialize_pmslt_lifetable <- function(population,
 
   keys <- c("age", "sex", "stratum")
   population <- check_lifetable_keys(population, keys, "population")
+  if (!is.null(stratum_rate_ratios)) {
+    mortality <- disaggregate_stratum_rates(
+      mortality,
+      stratum_rate_ratios,
+      target_keys = population[keys],
+      spec = spec,
+      label = "mortality"
+    )
+  }
   mortality <- check_lifetable_keys(mortality, keys, "mortality")
   check_complete_lifetable_join(population, mortality, keys, "mortality")
 
   population$.pmslt_row_id <- seq_len(nrow(population))
+  mortality_cols <- c(keys, "mortality_rate", lifetable_rate_audit_columns(mortality, "mortality_rate"))
   out <- merge(
     population[c(keys, "population", ".pmslt_row_id")],
-    mortality[c(keys, "mortality_rate")],
+    mortality[mortality_cols],
     by = keys,
     all.x = TRUE,
     sort = FALSE
@@ -101,11 +117,21 @@ initialize_pmslt_lifetable <- function(population,
       label = "morbidity"
     )
     morbidity$morbidity_rate <- as.numeric(morbidity$morbidity_rate)
+    if (!is.null(stratum_rate_ratios)) {
+      morbidity <- disaggregate_stratum_rates(
+        morbidity,
+        stratum_rate_ratios,
+        target_keys = population[keys],
+        spec = spec,
+        label = "morbidity"
+      )
+    }
     morbidity <- check_lifetable_keys(morbidity, keys, "morbidity")
     check_complete_lifetable_join(population, morbidity, keys, "morbidity")
+    morbidity_cols <- c(keys, "morbidity_rate", lifetable_rate_audit_columns(morbidity, "morbidity_rate"))
     out <- merge(
       out,
-      morbidity[c(keys, "morbidity_rate")],
+      morbidity[morbidity_cols],
       by = keys,
       all.x = TRUE,
       sort = FALSE
@@ -119,10 +145,11 @@ initialize_pmslt_lifetable <- function(population,
   out$person_years <- out$population - 0.5 * out$deaths
   out$yld_rate <- out$morbidity_rate
 
+  audit_cols <- lifetable_output_audit_columns(out)
   out <- out[c(
     "time_step", "age", "sex", "stratum", "population",
     "mortality_rate", "deaths", "alive_end", "person_years",
-    "morbidity_rate", "yld_rate"
+    "morbidity_rate", "yld_rate", audit_cols
   )]
   row.names(out) <- NULL
   class(out) <- c("pmslt_lifetable", "data.frame")
@@ -135,7 +162,9 @@ initialize_pmslt_lifetable <- function(population,
 #' Runs the business-as-usual all-cause lifetable for multiple yearly cycles
 #' using exact single-year integer ages. This function only ages surviving
 #' population forward. It does not add births, migration, entrants, disease
-#' deltas, intervention effects, costs, equity disaggregation, or PSA.
+#' deltas, intervention effects, costs, or PSA. If `stratum_rate_ratios` is
+#' supplied, aggregate mortality and morbidity rates are first disaggregated to
+#' model strata.
 #'
 #' @param population Data frame or CSV path. Required columns are `age`, `sex`,
 #'   `stratum`, and `population`. The template-style column
@@ -153,6 +182,10 @@ initialize_pmslt_lifetable <- function(population,
 #' @param horizon Number of yearly cycles to run. If omitted, uses
 #'   `spec$horizon` when `spec` is supplied, otherwise defaults to 1.
 #' @param spec Optional `pmslt_spec` object.
+#' @param stratum_rate_ratios Optional data frame or CSV path from
+#'   `11_stratum_rate_ratios.csv`. When supplied, aggregate mortality and
+#'   morbidity rates are disaggregated to the population strata before the BAU
+#'   lifetable is executed.
 #'
 #' @details
 #' Population ageing is deterministic and transparent. At the next cycle,
@@ -182,11 +215,153 @@ run_pmslt_lifetable_bau <- function(population,
                                     mortality,
                                     morbidity = NULL,
                                     horizon = NULL,
-                                    spec = NULL) {
+                                    spec = NULL,
+                                    stratum_rate_ratios = NULL) {
   if (!is.null(spec)) {
     validate_spec(spec)
   }
   horizon <- validate_lifetable_horizon(horizon, spec)
+
+  population <- prepare_lifetable_population(population)
+  mortality <- prepare_lifetable_rates(
+    mortality,
+    label = "mortality",
+    value_col = "mortality_rate",
+    alias = "acmr_BAU",
+    rule = "probability"
+  )
+  morbidity <- if (is.null(morbidity)) {
+    NULL
+  } else {
+    prepare_lifetable_rates(
+      morbidity,
+      label = "morbidity",
+      value_col = "morbidity_rate",
+      alias = "pYLD_BAU",
+      rule = "non_negative"
+    )
+  }
+
+  keys <- c("age", "sex", "stratum")
+  if (!is.null(stratum_rate_ratios)) {
+    mortality <- disaggregate_stratum_rates(
+      mortality,
+      stratum_rate_ratios,
+      target_keys = population[keys],
+      spec = spec,
+      label = "mortality"
+    )
+    if (!is.null(morbidity)) {
+      morbidity <- disaggregate_stratum_rates(
+        morbidity,
+        stratum_rate_ratios,
+        target_keys = population[keys],
+        spec = spec,
+        label = "morbidity"
+      )
+    }
+  }
+  validate_consecutive_lifetable_ages(population)
+  validate_lifetable_rates_for_horizon(population, mortality, keys, horizon, "mortality")
+  if (!is.null(morbidity)) {
+    validate_lifetable_rates_for_horizon(population, morbidity, keys, horizon, "morbidity")
+  }
+
+  current_population <- population[keys]
+  current_population$population <- population$population
+  rows <- vector("list", horizon)
+  for (time_step in seq_len(horizon) - 1L) {
+    cycle <- current_population
+    cycle$time_step <- time_step
+    cycle <- attach_lifetable_rate(cycle, mortality, "mortality_rate", "mortality")
+    if (is.null(morbidity)) {
+      cycle$morbidity_rate <- 0
+    } else {
+      cycle <- attach_lifetable_rate(cycle, morbidity, "morbidity_rate", "morbidity")
+    }
+    cycle$deaths <- cycle$population * cycle$mortality_rate
+    cycle$alive_end <- cycle$population - cycle$deaths
+    cycle$person_years <- cycle$population - 0.5 * cycle$deaths
+    cycle$yld_rate <- cycle$morbidity_rate
+    cycle$yld <- cycle$person_years * cycle$morbidity_rate
+    rows[[time_step + 1L]] <- cycle[c(
+      "time_step", "age", "sex", "stratum", "population",
+      "mortality_rate", "deaths", "alive_end", "person_years",
+      "morbidity_rate", "yld_rate", "yld", lifetable_output_audit_columns(cycle)
+    )]
+
+    if (time_step < horizon - 1L) {
+      current_population <- age_lifetable_population(cycle)
+    }
+  }
+
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  class(out) <- c("pmslt_lifetable", "data.frame")
+  attr(out, "spec") <- spec
+  attr(out, "ageing_rule") <- "open_ended_max_age"
+  out
+}
+
+#' Run BAU and intervention all-cause lifetables from disease effects
+#'
+#' Bridges disease-level intervention outputs from [run_pmslt_interventions()]
+#' into the main all-cause lifetable. It returns one comparable BAU lifetable
+#' and one intervention lifetable per intervention arm. This bridge is
+#' deterministic only: it does not add costs, PSA, discounting, age weighting,
+#' or equity logic.
+#'
+#' @param population Data frame or CSV path for main lifetable population.
+#' @param mortality Data frame or CSV path for BAU all-cause mortality rates.
+#' @param morbidity Optional data frame or CSV path for BAU all-cause morbidity
+#'   rates.
+#' @param intervention_effects Data frame or CSV path returned by
+#'   [run_pmslt_interventions()].
+#' @param horizon Number of yearly cycles to run. If omitted, uses
+#'   `spec$horizon` when `spec` is supplied, otherwise defaults to 1.
+#' @param spec Optional `pmslt_spec` object.
+#'
+#' @details
+#' Disease effects are first summed by `intervention`, `time_step`, `age`,
+#' `sex`, and `stratum`. In each intervention cycle, the all-cause mortality
+#' rate is updated as `mortality_rate + sum(delta_mortality)` and clamped to
+#' `[0, 1]`; the all-cause morbidity rate is updated as
+#' `morbidity_rate + sum(delta_morbidity)` and floored at zero. Deaths,
+#' person-years, YLDs, survivors, and later-cycle ageing are then recalculated
+#' from those adjusted all-cause rates.
+#'
+#' Disease-specific long output is preserved in the `disease_deltas` attribute
+#' on the BAU and intervention lifetables.
+#'
+#' @return A list with class `pmslt_lifetable_interventions` containing `bau`,
+#'   `interventions`, and `comparisons`. Comparison metrics use the
+#'   intervention-minus-BAU direction.
+#' @export
+run_pmslt_lifetable_interventions <- function(population,
+                                              mortality,
+                                              morbidity = NULL,
+                                              intervention_effects,
+                                              horizon = NULL,
+                                              spec = NULL) {
+  if (!is.null(spec)) {
+    validate_spec(spec)
+  }
+  horizon <- validate_lifetable_horizon(horizon, spec)
+  effects <- prepare_lifetable_intervention_effects(intervention_effects)
+
+  bau <- run_pmslt_lifetable_bau(
+    population = population,
+    mortality = mortality,
+    morbidity = morbidity,
+    horizon = horizon,
+    spec = spec
+  )
+  bau <- attach_lifetable_disease_output(
+    lifetable = bau,
+    effects = first_intervention_effects(effects),
+    scenario = "BAU",
+    use_intervention = FALSE
+  )
 
   population <- prepare_lifetable_population(population)
   mortality <- prepare_lifetable_rates(
@@ -215,39 +390,30 @@ run_pmslt_lifetable_bau <- function(population,
     validate_lifetable_rates_for_horizon(population, morbidity, keys, horizon, "morbidity")
   }
 
-  current_population <- population[keys]
-  current_population$population <- population$population
-  rows <- vector("list", horizon)
-  for (time_step in seq_len(horizon) - 1L) {
-    cycle <- current_population
-    cycle$time_step <- time_step
-    cycle <- attach_lifetable_rate(cycle, mortality, "mortality_rate", "mortality")
-    if (is.null(morbidity)) {
-      cycle$morbidity_rate <- 0
-    } else {
-      cycle <- attach_lifetable_rate(cycle, morbidity, "morbidity_rate", "morbidity")
-    }
-    cycle$deaths <- cycle$population * cycle$mortality_rate
-    cycle$alive_end <- cycle$population - cycle$deaths
-    cycle$person_years <- cycle$population - 0.5 * cycle$deaths
-    cycle$yld_rate <- cycle$morbidity_rate
-    cycle$yld <- cycle$person_years * cycle$morbidity_rate
-    rows[[time_step + 1L]] <- cycle[c(
-      "time_step", "age", "sex", "stratum", "population",
-      "mortality_rate", "deaths", "alive_end", "person_years",
-      "morbidity_rate", "yld_rate", "yld"
-    )]
-
-    if (time_step < horizon - 1L) {
-      current_population <- age_lifetable_population(cycle)
-    }
+  arms <- unique(effects$intervention)
+  interventions <- stats::setNames(vector("list", length(arms)), arms)
+  comparisons <- stats::setNames(vector("list", length(arms)), arms)
+  for (arm in arms) {
+    arm_effects <- effects[effects$intervention == arm, , drop = FALSE]
+    interventions[[arm]] <- run_one_intervention_lifetable(
+      population = population,
+      mortality = mortality,
+      morbidity = morbidity,
+      effects = arm_effects,
+      intervention = arm,
+      horizon = horizon,
+      spec = spec
+    )
+    comparisons[[arm]] <- compare_pmslt_results(bau, interventions[[arm]])
   }
 
-  out <- do.call(rbind, rows)
-  row.names(out) <- NULL
-  class(out) <- c("pmslt_lifetable", "data.frame")
-  attr(out, "spec") <- spec
-  attr(out, "ageing_rule") <- "open_ended_max_age"
+  out <- list(
+    bau = bau,
+    interventions = interventions,
+    comparisons = comparisons,
+    effect_rule = "mortality_rate_Int = clamp(mortality_rate_BAU + sum(delta_mortality), 0, 1); morbidity_rate_Int = max(morbidity_rate_BAU + sum(delta_morbidity), 0)"
+  )
+  class(out) <- "pmslt_lifetable_interventions"
   out
 }
 
@@ -262,6 +428,9 @@ run_pmslt_lifetable_bau <- function(population,
 #' @param lifetable Data frame returned by [run_pmslt_lifetable_bau()].
 #' @param disease_epi Data frame from [read_pmslt_disease_inputs()] or path to
 #'   `pmslt_disease_epi.csv`.
+#' @param stratum_rate_ratios Optional data frame or CSV path from
+#'   `11_stratum_rate_ratios.csv`. When supplied, aggregate disease rates are
+#'   disaggregated to lifetable strata before disease deltas are calculated.
 #'
 #' @details
 #' Disease inputs are joined to the lifetable by `time_step`, `age`, `sex`, and
@@ -276,7 +445,7 @@ run_pmslt_lifetable_bau <- function(population,
 #' @return A `pmslt_lifetable` data frame with `total_disease_cases`,
 #'   `total_disease_deaths`, and `total_disease_yld` columns.
 #' @export
-integrate_disease_deltas <- function(lifetable, disease_epi) {
+integrate_disease_deltas <- function(lifetable, disease_epi, stratum_rate_ratios = NULL) {
   validate_disease_delta_lifetable(lifetable)
   disease_epi <- read_disease_delta_inputs(disease_epi)
   disease_epi <- validate_disease_delta_epi(disease_epi)
@@ -284,13 +453,23 @@ integrate_disease_deltas <- function(lifetable, disease_epi) {
   keys <- c("time_step", "age", "sex", "stratum")
   lifetable_with_id <- lifetable
   lifetable_with_id$.pmslt_row_id <- seq_len(nrow(lifetable_with_id))
+  if (!is.null(stratum_rate_ratios)) {
+    disease_epi <- disaggregate_stratum_rates(
+      disease_epi,
+      stratum_rate_ratios,
+      target_keys = unique(lifetable_with_id[keys[c(2, 3, 4)]]),
+      spec = attr(lifetable, "spec", exact = TRUE),
+      label = "disease_epi"
+    )
+  }
 
   validate_complete_disease_delta_join(lifetable_with_id, disease_epi, keys)
   long <- merge(
     lifetable_with_id[c(keys, "person_years", ".pmslt_row_id")],
     disease_epi[c(
       keys, "disease", "incidence_BAU", "prevalence_initial",
-      "case_fatality_BAU", "disability_weight"
+      "case_fatality_BAU", "disability_weight",
+      lifetable_output_audit_columns(disease_epi)
     )],
     by = keys,
     all.x = TRUE,
@@ -815,9 +994,10 @@ attach_lifetable_rate <- function(cycle, rates, value_col, label) {
     cycle_rates <- rates
     by_cols <- c("age", "sex", "stratum")
   }
+  rate_cols <- c(by_cols, value_col, lifetable_rate_audit_columns(cycle_rates, value_col))
   out <- merge(
     cycle,
-    cycle_rates[c(by_cols, value_col)],
+    cycle_rates[rate_cols],
     by = by_cols,
     all.x = TRUE,
     sort = FALSE
@@ -829,6 +1009,22 @@ attach_lifetable_rate <- function(cycle, rates, value_col, label) {
     )
   }
   out[order(out$sex, out$stratum, out$age), , drop = FALSE]
+}
+
+lifetable_rate_audit_columns <- function(data, value_col) {
+  expected <- paste0(
+    value_col,
+    c("_original_aggregate", "_rate_ratio", "_rate_ratio_parameter", "_reference_stratum")
+  )
+  intersect(expected, names(data))
+}
+
+lifetable_output_audit_columns <- function(data) {
+  grep(
+    "_(original_aggregate|rate_ratio|rate_ratio_parameter|reference_stratum)$",
+    names(data),
+    value = TRUE
+  )
 }
 
 age_lifetable_population <- function(cycle) {
@@ -879,6 +1075,10 @@ summarise_all_cause_results <- function(results, by) {
   disease_total_cols <- c("total_disease_cases", "total_disease_deaths", "total_disease_yld")
   if (all(disease_total_cols %in% names(results))) {
     metric_cols <- c(metric_cols, disease_total_cols)
+  }
+  cost_cols <- reporting_cost_columns(results)
+  if (length(cost_cols) > 0) {
+    metric_cols <- c(metric_cols, cost_cols)
   }
   require_summary_metrics(results, metric_cols, "results")
   summarise_numeric_columns(results, group_cols, metric_cols)
@@ -1059,6 +1259,7 @@ validate_pmslt_results_for_comparison <- function(results, label) {
     c("population", "deaths", "person_years", "yld", "total_disease_cases", "total_disease_deaths", "total_disease_yld"),
     names(results)
   )
+  metric_cols <- c(metric_cols, reporting_cost_columns(results))
   require_summary_metrics(results, metric_cols, label)
   invisible(TRUE)
 }
@@ -1088,6 +1289,7 @@ validate_comparison_structure <- function(bau_results, intervention_results) {
 
 validate_comparison_metrics <- function(bau_results, intervention_results) {
   optional_metrics <- c("yld", "total_disease_cases", "total_disease_deaths", "total_disease_yld")
+  optional_metrics <- unique(c(optional_metrics, reporting_cost_columns(bau_results), reporting_cost_columns(intervention_results)))
   for (metric in optional_metrics) {
     in_bau <- metric %in% names(bau_results)
     in_intervention <- metric %in% names(intervention_results)
@@ -1200,6 +1402,286 @@ compare_summary_tables <- function(bau_summary, intervention_summary, by) {
   }
   row.names(out) <- NULL
   as.data.frame(out, stringsAsFactors = FALSE)
+}
+
+prepare_lifetable_intervention_effects <- function(intervention_effects) {
+  effects <- read_lifetable_input(intervention_effects, "intervention_effects")
+  required <- c(
+    "intervention", "time_step", "age", "sex", "stratum", "disease",
+    "incidence_BAU", "incidence_Int",
+    "disease_mortality_BAU", "disease_mortality_Int",
+    "disease_morbidity_BAU", "disease_morbidity_Int",
+    "delta_mortality", "delta_morbidity"
+  )
+  require_columns(effects, required, "intervention_effects")
+  validate_lifetable_age(effects$age, "intervention_effects")
+
+  effects$intervention <- as.character(effects$intervention)
+  effects$time_step <- suppressWarnings(as.numeric(effects$time_step))
+  if (any(is.na(effects$time_step)) ||
+      any(abs(effects$time_step - round(effects$time_step)) > .Machine$double.eps^0.5)) {
+    stop("`time_step` in intervention_effects must contain whole numbers.", call. = FALSE)
+  }
+  effects$time_step <- as.integer(effects$time_step)
+  effects$age <- as.integer(as.numeric(effects$age))
+  effects$sex <- as.character(effects$sex)
+  effects$stratum <- as.character(effects$stratum)
+  effects$disease <- as.character(effects$disease)
+
+  if (any(is.na(effects$intervention) | !nzchar(effects$intervention))) {
+    stop("`intervention_effects` must include non-empty intervention names.", call. = FALSE)
+  }
+  key_cols <- c("intervention", "time_step", "age", "sex", "stratum", "disease")
+  if (any(!stats::complete.cases(effects[key_cols]))) {
+    stop("`intervention_effects` has missing intervention, time_step, age, sex, stratum, or disease values.", call. = FALSE)
+  }
+  duplicated_row <- duplicated(effects[key_cols])
+  if (any(duplicated_row)) {
+    first <- effects[which(duplicated_row)[[1]], key_cols, drop = FALSE]
+    stop(
+      "`intervention_effects` must have one row per intervention, disease, time_step, age, sex, and stratum. ",
+      "First duplicate: intervention=", first$intervention[[1]],
+      ", disease=", first$disease[[1]],
+      ", age=", first$age[[1]],
+      ", sex=", first$sex[[1]],
+      ", stratum=", first$stratum[[1]],
+      ", time_step=", first$time_step[[1]], ".",
+      call. = FALSE
+    )
+  }
+
+  numeric_cols <- c(
+    "incidence_BAU", "incidence_Int",
+    "disease_mortality_BAU", "disease_mortality_Int",
+    "disease_morbidity_BAU", "disease_morbidity_Int",
+    "delta_mortality", "delta_morbidity"
+  )
+  for (col in numeric_cols) {
+    effects[[col]] <- suppressWarnings(as.numeric(effects[[col]]))
+    if (any(is.na(effects[[col]]))) {
+      stop("`", col, "` in intervention_effects must be numeric and non-missing.", call. = FALSE)
+    }
+  }
+
+  non_negative_cols <- c(
+    "incidence_BAU", "incidence_Int",
+    "disease_mortality_BAU", "disease_mortality_Int",
+    "disease_morbidity_BAU", "disease_morbidity_Int"
+  )
+  for (col in non_negative_cols) {
+    if (any(effects[[col]] < 0)) {
+      stop("`", col, "` in intervention_effects must be non-negative.", call. = FALSE)
+    }
+  }
+  effects
+}
+
+first_intervention_effects <- function(effects) {
+  effects[effects$intervention == effects$intervention[[1]], , drop = FALSE]
+}
+
+run_one_intervention_lifetable <- function(population,
+                                           mortality,
+                                           morbidity,
+                                           effects,
+                                           intervention,
+                                           horizon,
+                                           spec) {
+  delta_rates <- aggregate_intervention_delta_rates(effects)
+  validate_intervention_effect_join(population, delta_rates, horizon, intervention)
+
+  current_population <- population[c("age", "sex", "stratum")]
+  current_population$population <- population$population
+  rows <- vector("list", horizon)
+  for (time_step in seq_len(horizon) - 1L) {
+    cycle <- current_population
+    cycle$time_step <- time_step
+    cycle <- attach_lifetable_rate(cycle, mortality, "mortality_rate", "mortality")
+    if (is.null(morbidity)) {
+      cycle$morbidity_rate <- 0
+    } else {
+      cycle <- attach_lifetable_rate(cycle, morbidity, "morbidity_rate", "morbidity")
+    }
+    cycle <- attach_intervention_delta_rates(cycle, delta_rates, intervention)
+    cycle$mortality_rate_BAU <- cycle$mortality_rate
+    cycle$morbidity_rate_BAU <- cycle$morbidity_rate
+    cycle$mortality_rate <- pmin(1, pmax(0, cycle$mortality_rate_BAU + cycle$total_delta_mortality))
+    cycle$morbidity_rate <- pmax(0, cycle$morbidity_rate_BAU + cycle$total_delta_morbidity)
+    cycle$deaths <- cycle$population * cycle$mortality_rate
+    cycle$alive_end <- cycle$population - cycle$deaths
+    cycle$person_years <- cycle$population - 0.5 * cycle$deaths
+    cycle$yld_rate <- cycle$morbidity_rate
+    cycle$yld <- cycle$person_years * cycle$morbidity_rate
+    cycle$intervention <- intervention
+    rows[[time_step + 1L]] <- cycle[c(
+      "intervention", "time_step", "age", "sex", "stratum", "population",
+      "mortality_rate_BAU", "total_delta_mortality", "mortality_rate",
+      "deaths", "alive_end", "person_years",
+      "morbidity_rate_BAU", "total_delta_morbidity", "morbidity_rate",
+      "yld_rate", "yld"
+    )]
+
+    if (time_step < horizon - 1L) {
+      current_population <- age_lifetable_population(cycle)
+    }
+  }
+
+  out <- do.call(rbind, rows)
+  row.names(out) <- NULL
+  class(out) <- c("pmslt_lifetable", "data.frame")
+  attr(out, "spec") <- spec
+  attr(out, "ageing_rule") <- "open_ended_max_age"
+  out <- attach_lifetable_disease_output(
+    lifetable = out,
+    effects = effects,
+    scenario = intervention,
+    use_intervention = TRUE
+  )
+  out
+}
+
+aggregate_intervention_delta_rates <- function(effects) {
+  totals <- stats::aggregate(
+    effects[c("delta_mortality", "delta_morbidity")],
+    by = effects[c("intervention", "time_step", "age", "sex", "stratum")],
+    FUN = sum
+  )
+  names(totals)[names(totals) == "delta_mortality"] <- "total_delta_mortality"
+  names(totals)[names(totals) == "delta_morbidity"] <- "total_delta_morbidity"
+  row.names(totals) <- NULL
+  totals
+}
+
+validate_intervention_effect_join <- function(population, delta_rates, horizon, intervention) {
+  keys <- c("age", "sex", "stratum")
+  for (time_step in seq_len(horizon) - 1L) {
+    cycle_rates <- delta_rates[delta_rates$time_step == time_step, , drop = FALSE]
+    if (nrow(cycle_rates) == 0) {
+      stop(
+        "`intervention_effects` is missing all rows for intervention `",
+        intervention,
+        "` at time_step ",
+        time_step,
+        ".",
+        call. = FALSE
+      )
+    }
+    check_complete_lifetable_join(
+      population,
+      cycle_rates,
+      keys,
+      paste0("intervention_effects for `", intervention, "` at time_step ", time_step)
+    )
+  }
+  invisible(TRUE)
+}
+
+attach_intervention_delta_rates <- function(cycle, delta_rates, intervention) {
+  by_cols <- c("intervention", "time_step", "age", "sex", "stratum")
+  cycle$intervention <- intervention
+  out <- merge(
+    cycle,
+    delta_rates[c(by_cols, "total_delta_mortality", "total_delta_morbidity")],
+    by = by_cols,
+    all.x = TRUE,
+    sort = FALSE
+  )
+  if (any(is.na(out$total_delta_mortality)) || any(is.na(out$total_delta_morbidity))) {
+    stop("`intervention_effects` is missing a disease-delta rate during lifetable simulation.", call. = FALSE)
+  }
+  out[order(out$sex, out$stratum, out$age), , drop = FALSE]
+}
+
+attach_lifetable_disease_output <- function(lifetable, effects, scenario, use_intervention) {
+  validate_disease_delta_lifetable(lifetable)
+  required_cols <- c("time_step", "age", "sex", "stratum", "person_years", ".pmslt_row_id")
+  lifetable_with_id <- lifetable
+  lifetable_with_id$.pmslt_row_id <- seq_len(nrow(lifetable_with_id))
+  effect_long <- effects
+  if (isTRUE(use_intervention)) {
+    effect_long$disease_cases <- effect_long$incidence_Int
+    effect_long$disease_deaths <- effect_long$disease_mortality_Int
+    effect_long$disease_yld <- effect_long$disease_morbidity_Int
+  } else {
+    effect_long$disease_cases <- effect_long$incidence_BAU
+    effect_long$disease_deaths <- effect_long$disease_mortality_BAU
+    effect_long$disease_yld <- effect_long$disease_morbidity_BAU
+  }
+
+  keys <- c("time_step", "age", "sex", "stratum")
+  validate_complete_intervention_disease_join(lifetable_with_id, effect_long, keys, scenario)
+  long <- merge(
+    lifetable_with_id[required_cols],
+    effect_long[c(
+      keys, "intervention", "disease",
+      "incidence_BAU", "incidence_Int",
+      "disease_mortality_BAU", "disease_mortality_Int",
+      "disease_morbidity_BAU", "disease_morbidity_Int",
+      "delta_mortality", "delta_morbidity",
+      "disease_cases", "disease_deaths", "disease_yld"
+    )],
+    by = keys,
+    all.x = TRUE,
+    sort = FALSE
+  )
+  long$scenario <- scenario
+  long$disease_cases <- long$person_years * long$disease_cases
+  long$disease_deaths <- long$person_years * long$disease_deaths
+  long$disease_yld <- long$person_years * long$disease_yld
+  validate_non_negative_disease_quantities(long)
+
+  totals <- stats::aggregate(
+    long[c("disease_cases", "disease_deaths", "disease_yld")],
+    by = list(.pmslt_row_id = long$.pmslt_row_id),
+    FUN = sum
+  )
+  names(totals)[names(totals) == "disease_cases"] <- "total_disease_cases"
+  names(totals)[names(totals) == "disease_deaths"] <- "total_disease_deaths"
+  names(totals)[names(totals) == "disease_yld"] <- "total_disease_yld"
+
+  out <- merge(
+    lifetable_with_id,
+    totals,
+    by = ".pmslt_row_id",
+    all.x = TRUE,
+    sort = FALSE
+  )
+  out <- out[order(out$.pmslt_row_id), , drop = FALSE]
+  out$.pmslt_row_id <- NULL
+  row.names(out) <- NULL
+  class(out) <- class(lifetable)
+  attr(out, "spec") <- attr(lifetable, "spec", exact = TRUE)
+  attr(out, "ageing_rule") <- attr(lifetable, "ageing_rule", exact = TRUE)
+
+  long <- long[order(long$.pmslt_row_id, long$disease), , drop = FALSE]
+  long$.pmslt_row_id <- NULL
+  row.names(long) <- NULL
+  attr(out, "disease_deltas") <- long
+  out
+}
+
+validate_complete_intervention_disease_join <- function(lifetable, effects, keys, scenario) {
+  lifetable_keys <- unique(lifetable[keys])
+  effect_keys <- unique(effects[keys])
+  missing <- lifetable_keys[!disease_delta_key_in(lifetable_keys, effect_keys, keys), , drop = FALSE]
+  if (nrow(missing) > 0) {
+    first <- missing[1, , drop = FALSE]
+    stop(
+      "`intervention_effects` is missing disease rows for scenario `",
+      scenario,
+      "`. First missing lifetable key: age=",
+      first$age[[1]],
+      ", sex=",
+      first$sex[[1]],
+      ", stratum=",
+      first$stratum[[1]],
+      ", time_step=",
+      first$time_step[[1]],
+      ".",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 read_disease_delta_inputs <- function(disease_epi) {

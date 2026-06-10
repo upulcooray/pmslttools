@@ -8,7 +8,8 @@ initialize_pmslt_lifetable(
   population,
   mortality,
   morbidity = NULL,
-  spec = NULL
+  spec = NULL,
+  stratum_rate_ratios = NULL
 )
 }
 \arguments{
@@ -27,6 +28,11 @@ When omitted, \code{morbidity_rate} is set to zero.}
 
 \item{spec}{Optional \code{pmslt_spec} object. It is validated when supplied and
 stored as an attribute on the result.}
+
+\item{stratum_rate_ratios}{Optional data frame or CSV path from
+\verb{11_stratum_rate_ratios.csv}. When supplied, aggregate mortality and
+morbidity rates are disaggregated to the population strata before the
+one-step lifetable is calculated.}
 }
 \value{
 A data frame with class \code{pmslt_lifetable}.
@@ -35,7 +41,8 @@ A data frame with class \code{pmslt_lifetable}.
 Creates the business-as-usual starting state for the main all-cause PMSLT
 lifetable. This first slice only runs one deterministic time step. It does
 not age the population forward, apply disease deltas, model interventions,
-add costs, or run PSA.
+add costs, or run PSA. If \code{stratum_rate_ratios} is supplied, aggregate
+mortality and morbidity rates are first disaggregated to model strata.
 }
 \examples{
 population <- data.frame(

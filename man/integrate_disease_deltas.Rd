@@ -4,13 +4,17 @@
 \alias{integrate_disease_deltas}
 \title{Attach disease-attributable quantities to a BAU lifetable}
 \usage{
-integrate_disease_deltas(lifetable, disease_epi)
+integrate_disease_deltas(lifetable, disease_epi, stratum_rate_ratios = NULL)
 }
 \arguments{
 \item{lifetable}{Data frame returned by \code{\link[=run_pmslt_lifetable_bau]{run_pmslt_lifetable_bau()}}.}
 
 \item{disease_epi}{Data frame from \code{\link[=read_pmslt_disease_inputs]{read_pmslt_disease_inputs()}} or path to
 \code{pmslt_disease_epi.csv}.}
+
+\item{stratum_rate_ratios}{Optional data frame or CSV path from
+\verb{11_stratum_rate_ratios.csv}. When supplied, aggregate disease rates are
+disaggregated to lifetable strata before disease deltas are calculated.}
 }
 \value{
 A \code{pmslt_lifetable} data frame with \code{total_disease_cases},

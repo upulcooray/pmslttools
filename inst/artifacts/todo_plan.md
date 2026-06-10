@@ -6,7 +6,8 @@ Last updated: 2026-05-25
 
 1. Keep the package beginner-friendly.
 2. Stabilise input and output schemas before expanding the engine.
-3. Keep raw, DisMod-processed, and PMSLT-ready files separate.
+3. Keep raw, disease consistency solver outputs, and PMSLT-ready files
+   separate.
 4. Make intervention handling intuitive at template stage and model stage.
 5. Add full PMSLT components only after disease input contracts are clear.
 
@@ -237,88 +238,201 @@ Implementation note:
   helper that returns the validation issue table, summary, `can_proceed`, and
   `next_step` without duplicating validation rules.
 
-## Phase 3: Improve DisMod Integration
+## Phase 3: Improve Disease Consistency Solver Integration
 
 Status: high priority
 
-### 3.1 Separate teaching DisMod from real DisMod adapters
+### 3.0 Solver refactor decision record
 
-Status: input-preparation adapter, output reader, and PMSLT-ready disease
-bridge implemented.
+Status: planned from 2026-05-25 grill-me design session.
 
-Problem:
+Decision:
 
-- `dismod_slove()` and `mock_dismod_output()` are teaching tools, not real
-  DisMod-MR integration.
-- The package needs a real DisMod-MR adapter for a vertical workflow slice:
-  raw PMSLT templates to DisMod-MR files, external DisMod-MR output, canonical
-  `pmslt_disease_epi.csv`, then downstream PMSLT modules.
+- Replace the external DisMod-MR-centred direction with a package-native
+  disease consistency solver workflow.
+- Add `solve_disease_consistency(input_dir, solver = ...)` as the
+  beginner-facing bridge from raw disease inputs to canonical
+  `pmslt_disease_epi.csv`.
+- Keep `dismod_slove()` as a valid deterministic modelling option, not only a
+  teaching helper.
+- Make `disbayes` the planned primary real consistency solver once the adapter
+  and execution path are implemented and tested.
+- Keep `disbayes` optional in `Suggests`; the package should still install,
+  load, validate templates, run deterministic workflows, and run
+  `dismod_slove()` without Stan/RStan being configured.
+- Hard remove the external DisMod-MR adapter API during this refactor rather
+  than keeping deprecated callable aliases.
+- Reuse the existing PMSLT raw templates rather than adding a separate
+  disbayes-native user template.
+- Add explicit disease mortality evidence:
+  - `05_disease_epidemiology_raw.csv` gains `disease_mortality_rate`.
+  - `06_dismod_input_skeleton.csv` allows `parameter = "mortality"`.
+  - `excess_mortality_rate` must not be silently reinterpreted as disbayes
+    mortality.
+- Keep the filename `06_dismod_input_skeleton.csv`, but redefine it as generic
+  long-format disease-consistency solver evidence.
+- Keep solver-grade uncertainty only in `06_dismod_input_skeleton.csv` for the
+  first disbayes slices.
+- Keep `pmslt_disease_epi.csv` rate-based and explicit. The disbayes adapter
+  converts rates to probabilities internally and records the conversion in an
+  audit table.
+- Fit disbayes independently by `disease + sex + stratum` in the first
+  implementation.
+- Require disbayes evidence to include mortality plus at least one of incidence
+  or prevalence. If a group is under-specified, stop with diagnostics and let
+  the user fill evidence or choose `solver = "dismod_slove"`.
+- Fit disbayes internally on a complete `0:max(target_age)` single-year age
+  grid, then subset final PMSLT-ready output back to the target PMSLT ages.
+- Expand age-banded evidence using a constant-within-band rule in the first
+  slice, and audit whether rows are exact, expanded, or padded.
+- Keep `mock_dismod_output()` as demo/test-data generation only; it is not a
+  `solve_disease_consistency()` solver option.
+- Split the refactor into staged implementation slices.
 
-Todo:
+Staged implementation plan:
 
-- Keep `dismod_slove()` as a local teaching/diagnostic tool.
-- Add real adapter modules for input export, output reading, and PMSLT
-  bridging.
-- Add real adapter functions:
-  - `prepare_dismod_mr_inputs()` - implemented.
-  - `read_dismod_mr_outputs()` - implemented.
-  - `validate_dismod_mr_outputs()` - implemented.
-  - `prepare_pmslt_disease_inputs_from_dismod_mr()` - implemented.
-- Keep this first adapter file-format only. Do not attempt to run DisMod-MR
-  from R in the first slice.
-- Write one combined long DisMod-MR evidence file for all diseases, sexes,
-  strata, age groups, and parameters.
-- Support both `05_disease_epidemiology_raw.csv` and
-  `06_dismod_input_skeleton.csv` as input sources.
-- Support direct data-frame or CSV-path overrides for disease evidence and
-  DisMod skeleton evidence.
-- Give `06_dismod_input_skeleton.csv` precedence when both files provide the
-  same disease, sex, stratum, age group, and parameter.
-- Preserve original age bands in the DisMod-MR evidence export using
-  `age_start`, `age_end`, and `age_label`.
-- Drop blank or missing parameter values from the evidence export, but write an
-  omissions audit so missing values are visible.
-- Write a separate exact single-year target grid for parameters DisMod-MR is
-  expected to estimate.
-- Use `spec$ages` for target-grid ages when `spec` is supplied; otherwise infer
-  exact ages from raw disease input coverage.
-- Flag requested target ages outside observed raw evidence coverage as possible
-  DisMod-MR extrapolation.
-- Write `dismod_mr_input_summary.csv` by disease, sex, stratum, and parameter,
-  including evidence counts, omission counts, target-age counts, and
-  extrapolation counts.
-- Use narrow adapter-specific validation. Do not require the entire raw folder
-  to pass `check_raw_input_readiness()` before DisMod-MR input export.
+1. Schema/API cleanup slice:
+   add `disease_mortality_rate`, add skeleton `mortality`, hard remove
+   external DisMod-MR, add `solve_disease_consistency()` with the
+   `dismod_slove` branch working end to end, and leave the disbayes branch as
+   an explicit not-yet-implemented message.
+2. Disbayes adapter preparation slice:
+   add single-year expansion, rate-to-probability conversion, uncertainty
+   diagnostics, group evidence checks, and audit table generation without
+   running Stan.
+3. Disbayes execution slice:
+   call `disbayes::disbayes()`, tidy results, map outputs back to rate-based
+   PMSLT disease inputs, and write fit summaries and long parameter outputs.
+4. Workflow/docs slice:
+   update `next_pmslt_step()`, README, architecture, todo plan, implementation
+   log, examples, and beginner-facing guidance so the new main path is clear.
+
+Temporary default rule:
+
+- In Slice 1, default `solve_disease_consistency()` to `solver =
+  "dismod_slove"` because that branch can run immediately.
+- After the disbayes execution slice is implemented and tested, switch the
+  default to `solver = "disbayes"` while retaining `solver = "dismod_slove"`.
+
+### 3.0a Implement solver refactor Slice 1
+
+Status: implemented 2026-05-25.
+
+Completed:
+
+- Added `disease_mortality_rate` to `05_disease_epidemiology_raw.csv` in the
+  template generator, schema metadata, input guide, validators, mock data, and
+  tests.
+- Added `mortality` to the allowed long-format parameters in
+  `06_dismod_input_skeleton.csv`.
+- Updated plain-language guidance so `mortality` means disease-specific
+  mortality evidence for consistency solvers, while `excess_mortality_rate`
+  remains excess mortality among people with disease.
+- Kept `06_dismod_input_skeleton.csv` as the filename, but described it as
+  generic disease-consistency solver evidence.
+- Removed external DisMod-MR source files, exports, tests, man pages, README
+  sections, and artifact references from the active workflow.
+- Added exported `solve_disease_consistency()` with:
+  - `solver = c("dismod_slove", "disbayes")` for the transitional slice.
+  - `solver = "dismod_slove"` writing canonical `pmslt_disease_epi.csv` plus
+    existing diagnostic outputs.
+  - `solver = "disbayes"` stopping with a clear not-yet-implemented message.
+- Updated `next_pmslt_step()` so the post-readiness recommendation is
+  `solve_disease_consistency()`, not direct `dismod_slove()`.
+- Updated `CODEX.md`, `inst/artifacts/package_architecture.md`,
+  `inst/artifacts/todo_plan.md`, and `inst/artifacts/implementation_log.md`.
+- Package-aware validation completed: `devtools::document()` and
+  `devtools::test()` passed with 521 tests.
 
 Acceptance criteria:
 
-- Documentation clearly separates DisMod-lite from real DisMod-MR.
-- `prepare_dismod_mr_inputs()` writes:
-  - `dismod_mr_input_long.csv`
-  - `dismod_mr_target_grid.csv`
-  - `dismod_mr_input_omissions.csv`
-  - `dismod_mr_input_summary.csv`
-- The evidence file contains observed non-missing values only.
-- The target grid contains exact integer single-year ages and required
-  parameters:
-  `incidence`, `prevalence`, `remission`, `excess_mortality`, and
-  `case_fatality`.
-- Missing raw parameters such as remission or case fatality are still included
-  in the target grid when they are expected DisMod-MR outputs.
-- Adapter validation checks only the disease evidence and target-grid contract,
-  not unrelated cost, intervention, or all-cause template readiness.
-- Tests cover combined wide/long input handling, source precedence, missing
-  observation omissions, target-grid generation, and extrapolation flags.
+- `solve_disease_consistency(input_dir, solver = "dismod_slove")` creates a
+  valid exact-age `pmslt_disease_epi.csv`.
+- Direct `dismod_slove()` remains available for users who want solver
+  diagnostics.
+- `mock_dismod_output()` remains available but is documented as demo/test-data
+  generation only.
+- No active beginner-facing documentation recommends the external DisMod-MR
+  adapter.
+- Tests cover the new disease mortality column, skeleton `mortality`
+  parameter, high-level `dismod_slove` branch, and clear disbayes placeholder
+  error.
 
-Implementation design note:
+### 3.0b Prepare disbayes adapter without execution
 
-- DisMod-MR input rows are observed evidence, not requested estimates. Blank
-  template cells should therefore not be written as `NA` evidence rows.
-- `dismod_mr_target_grid.csv` is the requested prediction grid and should list
-  all disease, sex, stratum, exact-age, and parameter combinations expected
-  from DisMod-MR.
-- The first slice should expose file contracts and validation while leaving
-  DisMod-MR execution to the user or external pipeline.
+Status: planned after Slice 1.
+
+Todo:
+
+- Convert raw and skeleton evidence into a disbayes-ready internal table by
+  `disease`, `sex`, and `stratum`.
+- Expand age bands to exact single-year rows using a constant-within-band rule.
+- Pad internal disbayes fit ages to `0:max(target_age)` and mark padded rows in
+  the audit.
+- Convert rate evidence to annual probabilities only inside the adapter using
+  `1 - exp(-rate)`.
+- Require mortality plus at least one of incidence or prevalence for every
+  group.
+- Require usable uncertainty by default: `lower_95`/`upper_95` or
+  `sample_size` in `06_dismod_input_skeleton.csv`.
+- Produce audit tables for source rows, converted probabilities, age
+  expansion, missing evidence, and insufficient uncertainty.
+- Keep point-estimate-only groups on the `dismod_slove()` path unless the user
+  explicitly enables default uncertainty in a later option.
+
+Acceptance criteria:
+
+- Adapter diagnostics are structured and beginner-readable.
+- No Stan or `disbayes` execution is required for this slice's tests.
+- Evidence failures tell the user to fill more skeleton evidence or choose
+  `solver = "dismod_slove"`.
+
+### 3.0c Execute disbayes solver and bridge to PMSLT
+
+Status: planned after adapter preparation.
+
+Todo:
+
+- Add optional `disbayes` dependency checks with a clear install/setup message.
+- Fit one `disbayes::disbayes()` model per disease, sex, and stratum.
+- Default to an execution method that is practical for package users, with
+  advanced method choices exposed through solver options.
+- Tidy disbayes outputs and map:
+  - `inc` to `incidence_BAU`
+  - `rem` to `remission_rate`
+  - `cf` to `case_fatality_BAU`
+  - `prev_prob` to `prevalence_initial`
+- Carry raw `excess_mortality_rate` to `excess_mortality_BAU` when explicitly
+  supplied; otherwise leave `excess_mortality_BAU` missing with provenance. Do
+  not silently copy case fatality into excess mortality.
+- Join `disability_weight` from raw disease inputs by disease, sex, stratum,
+  and target exact age.
+- Write canonical `pmslt_disease_epi.csv`, long solver parameter outputs, fit
+  summaries, and audit files.
+- After this slice is validated, change the high-level default to
+  `solver = "disbayes"`.
+
+Acceptance criteria:
+
+- The package still loads and non-disbayes workflows still run without
+  `disbayes` installed.
+- Tests for actual disbayes execution are skipped when `disbayes` is not
+  available.
+- The final PMSLT-ready file remains rate-based, exact-age, and validated by
+  `validate_pmslt_disease_inputs()`.
+
+### 3.1 Separate teaching DisMod from real DisMod adapters
+
+Status: superseded and removed from the active roadmap by Slice 1.
+
+Outcome:
+
+- The package no longer keeps an external DisMod-MR active API.
+- `dismod_slove()` remains a deterministic package-native solver and
+  diagnostic helper.
+- `mock_dismod_output()` remains demo/test-data generation only.
+- Future real consistency-solver work should continue through the
+  `solve_disease_consistency()` disbayes adapter and execution slices above.
 
 ### 3.2 Define canonical DisMod output contract
 
@@ -367,68 +481,15 @@ Implementation note:
 
 ### 3.2a Define real DisMod-MR output adapter contract
 
-Status: completed 2026-05-25.
+Status: superseded and removed from the active roadmap by Slice 1.
 
-Problem:
+Outcome:
 
-- `pmslt_disease_epi.csv` is the canonical PMSLT-ready output, but a real
-  DisMod-MR output file should remain adapter-shaped rather than PMSLT-shaped.
-
-Todo:
-
-- Make `read_dismod_mr_outputs()` read a generic long parameter table.
-- Require exact integer single-year `age` in real DisMod-MR outputs.
-- Require columns:
-  `age`, `sex`, `stratum`, `disease`, `parameter`, and `mean_value`.
-- Allow optional `lower_95` and `upper_95` uncertainty columns.
-- Require parameter values:
-  `incidence`, `prevalence`, `remission`, `excess_mortality`, and
-  `case_fatality`.
-- Do not require `disability_weight` from DisMod-MR.
-- Preserve optional uncertainty columns as provenance where practical, but do
-  not use them in deterministic PMSLT calculations until PSA support is built.
-- Add `prepare_pmslt_disease_inputs_from_dismod_mr()` to bridge the generic
-  long output into canonical wide `pmslt_disease_epi.csv`.
-- Source `disability_weight` from `05_disease_epidemiology_raw.csv` during the
-  bridge, expanding age-banded raw disability weights to exact output ages.
-
-Acceptance criteria:
-
-- `validate_dismod_mr_outputs()` rejects age-banded real DisMod-MR outputs in
-  the first adapter slice.
-- The validator detects missing required columns, invalid parameter names,
-  non-numeric values, invalid rates/proportions, incoherent uncertainty bounds,
-  and missing target-grid output rows.
-- The bridge maps:
-  - `incidence` to `incidence_BAU`
-  - `prevalence` to `prevalence_initial`
-  - `remission` to `remission_rate`
-  - `excess_mortality` to `excess_mortality_BAU`
-  - `case_fatality` to `case_fatality_BAU`
-- The bridge validates the resulting `pmslt_disease_epi.csv` with
-  `validate_pmslt_disease_inputs()`.
-- Tests cover successful bridge output, missing target rows, invalid age
-  resolution, optional uncertainty columns, and raw disability-weight joins.
-
-Implementation note:
-
-- Added exported `read_dismod_mr_outputs()` and
-  `validate_dismod_mr_outputs()`.
-- The reader validates one external long-format CSV and returns a
-  `dismod_mr_outputs` object.
-- The validator checks required columns, allowed parameters, exact integer
-  single-year ages, non-empty identifiers, non-negative modelled values,
-  uncertainty bounds, duplicate keys, target-grid completeness, and extra
-  output rows as warnings.
-- `disability_weight` is rejected as an unsupported DisMod-MR modelled
-  parameter.
-- Added exported `prepare_pmslt_disease_inputs_from_dismod_mr()`.
-- The bridge accepts a data frame, CSV path, or `dismod_mr_outputs` object,
-  validates DisMod-MR outputs before conversion, requires all five modelled
-  parameters per disease-age-sex-stratum key, joins raw age-banded
-  `disability_weight`, and validates the PMSLT-ready result by default.
-- Optional uncertainty bounds are preserved as provenance columns when present;
-  deterministic mean columns remain the PMSLT engine inputs.
+- External DisMod-MR output reading, validation, and bridge code were removed
+  from the active package API.
+- Future output contracts should be defined for `solve_disease_consistency()`
+  solver branches, starting with the disbayes preparation and execution slices
+  above.
 
 ### 3.3 Improve continuous-age diagnostics and reporting
 

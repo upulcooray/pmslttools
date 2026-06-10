@@ -1,15 +1,15 @@
 # pmslttools Package Architecture
 
-Last updated: 2026-05-25
+Last updated: 2026-05-30
 
 ## Package Aim
 
 `pmslttools` is being built as a beginner-friendly R package for planning,
 structuring, and running proportional multistate lifetable (PMSLT) simulation
 projects. The package should guide a new modeller from a small model
-specification to project-specific input templates, DisMod-style disease
-parameter processing, intervention modelling, and eventually full PMSLT
-population outputs.
+specification to project-specific input templates, disease consistency solver
+workflows, intervention modelling, and eventually full PMSLT population
+outputs.
 
 The package is intentionally workflow-oriented. Functions should make the next
 modelling step obvious, use plain-language errors, and keep raw input files as
@@ -32,10 +32,11 @@ spec <- pmslt_spec(
 )
 
 draft_input_templates(spec, output_dir = "inputs_raw")
-dismod_slove("inputs_raw")
+readiness <- check_raw_input_readiness("inputs_raw", spec)
+solve_disease_consistency("inputs_raw")
 
 disease_epi <- read_pmslt_disease_inputs(
-  "inputs_raw/mock_dismod_output/pmslt_disease_epi.csv"
+  "inputs_raw/disease_consistency_results/pmslt_disease_epi.csv"
 )
 
 results <- run_pmslt_interventions(
@@ -45,6 +46,74 @@ results <- run_pmslt_interventions(
   direct_effects = "inputs_raw/10_direct_intervention_effects.csv"
 )
 ```
+
+## Disease Consistency Solver Refactor
+
+Decision record from the 2026-05-25 grill-me design session:
+
+- Add a beginner-facing high-level solver function,
+  `solve_disease_consistency(input_dir, solver = ...)`, so the main workflow
+  has one obvious step from checked raw disease inputs to
+  `pmslt_disease_epi.csv`.
+- Keep lower-level solver functions available. `dismod_slove()` remains a
+  valid package-native deterministic modelling option, not only a teaching
+  helper. `mock_dismod_output()` remains demo/test-data generation only and
+  should not become a `solve_disease_consistency()` solver choice.
+- Make `disbayes` the planned primary real consistency solver once its adapter
+  and execution path are implemented and tested. Keep `disbayes` optional in
+  `Suggests` because it brings Stan/RStan setup requirements.
+- During the staged implementation, default
+  `solve_disease_consistency()` to `solver = "dismod_slove"` until the
+  `disbayes` execution path works. After that, switch the default to
+  `solver = "disbayes"` while keeping `solver = "dismod_slove"` explicit.
+- Hard remove the external DisMod-MR adapter in this refactor rather than
+  soft-deprecating it. Slice 1 removed its source files, exports, tests, man
+  pages, and beginner-facing README path from the active package API.
+- Reuse the existing raw template workflow. Do not add a separate
+  disbayes-native user template. The package should translate raw PMSLT
+  disease inputs into solver-specific inputs.
+- Add explicit disease mortality evidence. `05_disease_epidemiology_raw.csv`
+  now includes a wide `disease_mortality_rate` column. The long
+  `06_dismod_input_skeleton.csv` now allows `parameter = "mortality"`.
+  Do not silently reinterpret `excess_mortality_rate` as disease mortality.
+- Keep the filename `06_dismod_input_skeleton.csv` for now, but redefine it as
+  generic long-format disease-consistency solver evidence for `disbayes` and
+  `dismod_slove`.
+- Keep uncertainty metadata only in `06_dismod_input_skeleton.csv` for the
+  first disbayes slice. `05_disease_epidemiology_raw.csv` stays
+  point-estimate oriented and readable.
+- Keep canonical `pmslt_disease_epi.csv` rate-based and explicit. Rate-to-
+  probability conversion happens only inside the disbayes adapter using
+  `1 - exp(-rate)`, and an audit table should record source values and
+  converted probabilities.
+- Map disbayes outputs back to canonical PMSLT columns explicitly:
+  `inc` to `incidence_BAU`, `rem` to `remission_rate`, `cf` to
+  `case_fatality_BAU`, and `prev_prob` to `prevalence_initial`.
+  Do not automatically copy `cf` into `excess_mortality_BAU`. Carry raw
+  `excess_mortality_rate` through when supplied; otherwise leave
+  `excess_mortality_BAU` missing with provenance.
+- Fit the first disbayes implementation independently by
+  `disease + sex + stratum`. Hierarchical or pooled disbayes models can be a
+  later explicit mode, not the first implementation.
+- For disbayes, require mortality plus at least one of incidence or prevalence
+  for each group. If evidence is insufficient, stop with structured
+  diagnostics and let the user choose another solver or fill more evidence. Do
+  not silently fall back.
+- Internally fit disbayes on a complete single-year age grid from
+  `0:max(target_age)`, because disbayes requires age to start at zero. Subset
+  final `pmslt_disease_epi.csv` back to the PMSLT target ages.
+- Expand age-banded raw evidence to exact single-year ages using an explicit
+  constant-within-band rule in the first slice, with audit fields such as
+  `source_age_start`, `source_age_end`, and
+  `age_source = exact | expanded_constant | padded_missing`.
+- By default, disbayes evidence should include usable uncertainty
+  (`lower_95`/`upper_95` or `sample_size`) in the long skeleton. Point-estimate
+  only evidence should use `dismod_slove()` unless the user explicitly enables
+  default uncertainty.
+- In Slice 1, `solve_disease_consistency(solver = "dismod_slove")` writes
+  canonical `pmslt_disease_epi.csv` plus existing deterministic solver
+  diagnostics. The `disbayes` branch intentionally stops before fitting until
+  the later adapter and execution slices are implemented.
 
 ## Relationship To `PMSLT_Template_v1.R`
 
@@ -251,6 +320,10 @@ Current rule:
 - The diagnostic expects at least three disease parameter types among incidence,
   prevalence, remission, excess mortality, and case fatality to be reasonably
   DisMod-ready.
+- Planned refactor note: disbayes readiness will use a stricter solver-specific
+  rule: explicit mortality plus at least one of incidence or prevalence. The
+  current three-parameter diagnostic should be updated or wrapped when the
+  solver refactor reaches the disbayes adapter slice.
 
 Design rule:
 
@@ -333,9 +406,12 @@ Important output files:
 
 Boundary:
 
-- `dismod_slove()` and `mock_dismod_output()` are not replacements for
-  real DisMod-MR. They exist to teach workflow shape and to support local
-  package development alongside a separate real DisMod-MR file adapter.
+- `dismod_slove()` is a valid package-native deterministic disease-consistency
+  solver and diagnostic helper.
+- `mock_dismod_output()` is teaching and test-data generation only. It should
+  not be presented as actual modelling.
+- The planned solver refactor makes `disbayes` the primary real consistency
+  solver while preserving `dismod_slove()` as an explicit modelling option.
 
 Design rule:
 
@@ -348,119 +424,53 @@ Design rule:
 - Changes to `pmslt_disease_epi.csv` columns should be made in the central
   PMSLT-ready schema first, then reflected in readers, validators, and writers.
 
-## Layer 5a: Real DisMod-MR File Adapter
+## Layer 5a: Disease Consistency Solver Wrapper
+
+Status:
+
+- Slice 1 implemented on 2026-05-25.
+- The external DisMod-MR adapter has been removed from the active API.
 
 Files:
 
-- `R/dismod-mr-inputs.R`
-- `R/dismod-mr-output.R`
-- `R/dismod-mr-to-pmslt.R`
+- `R/disease-consistency.R`
+- `R/dismod-lite.R`
+- `R/templates.R`
+- `R/schema.R`
 
 Public functions:
 
-- `prepare_dismod_mr_inputs()`
-- `read_dismod_mr_outputs()`
-- `validate_dismod_mr_outputs()`
-- `prepare_pmslt_disease_inputs_from_dismod_mr()`
+- `solve_disease_consistency()`
+- `dismod_slove()`
 
 Responsibilities:
 
-- Provide a real DisMod-MR file-format adapter so the package has a vertical
-  workflow slice from raw PMSLT templates to external DisMod-MR outputs and then
-  to canonical PMSLT-ready disease inputs.
-- Prepare one combined long DisMod-MR input evidence file for all diseases,
-  sexes, strata, age groups, and parameters.
-- Preserve age-banded observations in the DisMod-MR input export; exact
-  single-year ages are required after DisMod-MR, not before it.
-- Write an explicit exact-age target grid describing the disease parameters the
-  package expects DisMod-MR to estimate.
-- Read and validate external DisMod-MR output files without trying to run
-  DisMod-MR from R.
-- Convert validated real DisMod-MR outputs into `pmslt_disease_epi.csv`.
+- Provide the beginner-facing bridge from checked raw disease inputs to
+  canonical `pmslt_disease_epi.csv`.
+- Keep `dismod_slove()` available as a deterministic package-native solver and
+  diagnostic helper.
+- Keep `mock_dismod_output()` outside the solver choices; it remains
+  demonstration/test-data generation only.
+- Reserve `solver = "disbayes"` for the later real consistency solver. In this
+  slice it stops with a plain not-yet-implemented message and does not add Stan
+  or RStan dependencies.
+- Keep explicit disease mortality evidence separate from excess mortality:
+  `disease_mortality_rate` in `05_disease_epidemiology_raw.csv` maps to
+  `parameter = "mortality"` evidence in `06_dismod_input_skeleton.csv`;
+  `excess_mortality_rate` remains excess mortality among people with disease.
 
-DisMod-MR input export contract:
+Current output contract:
 
-- `prepare_dismod_mr_inputs()` supports both
-  `05_disease_epidemiology_raw.csv` and `06_dismod_input_skeleton.csv`.
-- When both files provide the same disease, sex, stratum, age group, and
-  parameter, `06_dismod_input_skeleton.csv` takes precedence.
-- The main evidence export is a combined long file such as
-  `dismod_mr_input_long.csv`.
-- Evidence rows preserve the original age grouping with `age_start`, `age_end`,
-  and `age_label`.
-- Evidence rows contain observed non-missing values only. Supported evidence
-  parameters are `incidence`, `prevalence`, `remission`,
-  `excess_mortality`, `case_fatality`, and optional raw provenance
-  `disability_weight`.
-- Blank or missing parameter values are not exported as evidence observations.
-  They are omitted from the evidence file and recorded in an omissions audit.
-- The adapter writes companion audit files:
-  `dismod_mr_input_omissions.csv`, `dismod_mr_input_summary.csv`, and
-  `dismod_mr_target_grid.csv`.
-- `dismod_mr_target_grid.csv` uses exact integer single-year `age`, because it
-  represents requested predictions rather than observed evidence rows.
-- If a `pmslt_spec` is supplied, target-grid ages come from `spec$ages`.
-  Otherwise, exact ages are inferred from the union of raw disease input age
-  coverage.
-- If `spec$ages` requests ages outside observed evidence coverage, the adapter
-  should allow the target grid but flag that DisMod-MR extrapolation may be
-  required.
-- `dismod_mr_input_summary.csv` is grouped by disease, sex, stratum, and
-  parameter, with evidence counts, omitted-row counts, target-age counts, and
-  extrapolation target counts.
-
-DisMod-MR output contract:
-
-- Real DisMod-MR outputs should be read as a generic long parameter table, not
-  as a PMSLT-ready wide file.
-- Required columns are:
-  `age`, `sex`, `stratum`, `disease`, `parameter`, and `mean_value`.
-- `age` must be an exact integer single-year age. Age-banded DisMod-MR outputs
-  are out of scope for the first adapter slice.
-- Required parameter values are:
-  `incidence`, `prevalence`, `remission`, `excess_mortality`, and
-  `case_fatality`.
-- Optional uncertainty columns are `lower_95` and `upper_95`. These should be
-  preserved as provenance when present but not used by deterministic PMSLT
-  modules until PSA support is built.
-- `disability_weight` is not required from DisMod-MR. It remains a PMSLT raw
-  input parameter and should be joined from `05_disease_epidemiology_raw.csv`
-  during the bridge to `pmslt_disease_epi.csv`.
-- `read_dismod_mr_outputs()` returns a `dismod_mr_outputs` object containing
-  the cleaned output table, validation object, source path, and optional target
-  grid used for validation.
-- `validate_dismod_mr_outputs()` returns a `dismod_mr_output_validation`
-  object with issue rows, summary counts, validity status, required columns,
-  optional columns, and allowed parameters. In strict mode, validation errors
-  stop with beginner-facing messages.
-
-Bridge rule:
-
-- `prepare_pmslt_disease_inputs_from_dismod_mr()` maps the generic
-  DisMod-MR output parameters into the canonical PMSLT-ready columns:
-  `incidence` to `incidence_BAU`, `prevalence` to
-  `prevalence_initial`, `remission` to `remission_rate`,
-  `excess_mortality` to `excess_mortality_BAU`, and `case_fatality` to
-  `case_fatality_BAU`.
-- The bridge expands or joins raw `disability_weight` values from age-banded raw
-  inputs to exact output ages and fails on missing or ambiguous matches.
-- The bridge validates the resulting `pmslt_disease_epi.csv` with
+- `solve_disease_consistency(input_dir, solver = "dismod_slove")` writes:
+  - `dismod_lite_solved_wide.csv`
+  - `dismod_lite_solved_long.csv`
+  - `dismod_lite_diagnostics.csv`
+  - `pmslt_disease_epi.csv`
+- `pmslt_disease_epi.csv` remains exact-age, rate-based, and validated by
   `validate_pmslt_disease_inputs()`.
-
-Validation boundary:
-
-- `prepare_dismod_mr_inputs()` should run narrow adapter-specific validation
-  rather than requiring the whole raw input folder to pass
-  `check_raw_input_readiness()`.
-- Adapter validation should check required disease evidence files, identifier
-  columns, allowed parameter names, numeric observed values, coherent
-  uncertainty bounds when present, and target-grid construction.
-- External output validation checks required output columns, unsupported
-  parameters, exact integer ages, non-empty identifiers, non-negative
-  `mean_value`, optional uncertainty bounds, duplicate output keys, missing
-  target-grid combinations, and extra output rows as warnings.
-- Full raw-input readiness remains a separate PMSLT workflow check before full
-  model execution.
+- `06_dismod_input_skeleton.csv` remains the filename for long solver evidence,
+  but its active meaning is generic disease-consistency solver evidence rather
+  than an external DisMod-MR file contract.
 
 ## Layer 6: PMSLT Disease Workflow
 
@@ -629,6 +639,387 @@ Design rule:
 - Deterministic model contracts come first. PSA should sample from stable
   schemas rather than ad hoc generated data frames.
 
+## Builder Architecture Pacts
+
+These pacts define manageable implementation slices for builder agents. Each
+builder should complete one pact at a time, update tests and documentation for
+that pact, and avoid changing contracts owned by other pacts unless the
+architecture document is updated first.
+
+Common rules for all pacts:
+
+- Preserve the workflow boundary:
+  raw inputs -> disease consistency solver outputs -> `pmslt_disease_epi.csv`
+  -> intervention and lifetable workflows.
+- Prefer base R and explicit CSV schemas.
+- Keep beginner-facing functions workflow-oriented with plain-language errors.
+- Add or update tests in `tests/testthat/` for every public behaviour change.
+- Run `devtools::test()` before handoff; run `R CMD check` when public API,
+  documentation, optional dependencies, or package metadata change.
+- Update `inst/artifacts/implementation_log.md` and this architecture file when
+  a pact changes a durable package decision.
+
+### Pact 1: Disbayes Adapter Preparation
+
+Owner scope:
+
+- Build internal, testable preparation code for `solver = "disbayes"` without
+  running Stan, RStan, or `disbayes`.
+
+Primary files:
+
+- `R/disease-consistency.R`
+- `R/schema.R`
+- `R/dismod-lite.R` only if reusable age-expansion helpers are needed
+- `tests/testthat/test-dismod-lite.R` or a new
+  `tests/testthat/test-disease-consistency.R`
+
+Deliverables:
+
+- Convert `05_disease_epidemiology_raw.csv` and
+  `06_dismod_input_skeleton.csv` into a disbayes-ready internal evidence table.
+- Expand age-banded evidence to exact single-year ages using the documented
+  constant-within-band rule.
+- Pad internal fit ages to `0:max(target_age)` and mark padded rows.
+- Convert rates to annual probabilities using `1 - exp(-rate)` only inside the
+  adapter.
+- Produce structured diagnostics and audit tables for age expansion, rate
+  conversion, missing evidence, and insufficient uncertainty.
+- Require mortality plus at least one of incidence or prevalence for every
+  `disease + sex + stratum` group.
+- Require usable uncertainty by default from `lower_95`/`upper_95` or
+  `sample_size` in `06_dismod_input_skeleton.csv`.
+
+Boundaries:
+
+- Do not add `disbayes`, Stan, or RStan execution.
+- Do not switch the default solver away from `dismod_slove`.
+- Do not change the canonical `pmslt_disease_epi.csv` schema.
+- Do not silently reinterpret `excess_mortality_rate` as disease mortality.
+
+Acceptance criteria:
+
+- Adapter preparation can be unit tested without optional dependencies.
+- Under-specified evidence returns beginner-readable diagnostics identifying
+  the affected disease, sex, stratum, missing parameter class, and suggested
+  fix.
+- Audit outputs distinguish exact, expanded, and padded ages.
+- Point-estimate-only evidence tells users to use `solver = "dismod_slove"` or
+  provide uncertainty, unless an explicit future option says otherwise.
+
+Handoff:
+
+- `solve_disease_consistency(solver = "disbayes")` may still stop before
+  fitting, but should stop after returning or writing useful preparation
+  diagnostics.
+
+### Pact 2: Disbayes Execution Bridge
+
+Owner scope:
+
+- Run `disbayes` as the primary real disease consistency solver and map fitted
+  outputs back to PMSLT-ready disease inputs.
+
+Primary files:
+
+- `R/disease-consistency.R`
+- `R/schema.R`
+- `DESCRIPTION`
+- `NAMESPACE`
+- `README.md`
+- `tests/testthat/test-disease-consistency.R`
+
+Deliverables:
+
+- Add optional dependency checks for `disbayes` with clear setup messages.
+- Fit one model per `disease + sex + stratum`.
+- Tidy disbayes outputs and map:
+  - `inc` to `incidence_BAU`
+  - `rem` to `remission_rate`
+  - `cf` to `case_fatality_BAU`
+  - `prev_prob` to `prevalence_initial`
+- Carry explicit raw `excess_mortality_rate` into
+  `excess_mortality_BAU` when available; otherwise leave it missing with
+  provenance.
+- Join `disability_weight` from raw disease inputs.
+- Write canonical `pmslt_disease_epi.csv`, fit summaries, long solver outputs,
+  and audit files.
+- After validation, switch the high-level default to `solver = "disbayes"`
+  while preserving `solver = "dismod_slove"`.
+
+Boundaries:
+
+- Keep `disbayes` optional in `Suggests`.
+- The package must still install, load, validate templates, and run
+  `dismod_slove` workflows without `disbayes` installed.
+- Do not make `mock_dismod_output()` a solver choice.
+- Do not expose raw disbayes-native templates to beginners.
+
+Acceptance criteria:
+
+- Tests skip execution cleanly when `disbayes` is unavailable.
+- Non-disbayes tests pass without optional solver infrastructure.
+- The written `pmslt_disease_epi.csv` is exact-age, rate-based, and accepted by
+  `validate_pmslt_disease_inputs()`.
+- README and workflow navigation identify the new default path clearly.
+
+Handoff:
+
+- Builders working on PMSLT engines can treat `pmslt_disease_epi.csv` as stable
+  and solver-independent.
+
+### Pact 3: Intervention-To-Main-Lifetable Bridge
+
+Owner scope:
+
+- Connect intervention disease effects to the main all-cause lifetable without
+  adding costs, equity, or PSA.
+
+Primary files:
+
+- `R/pmslt-workflow.R`
+- `R/main-lifetable.R`
+- `R/workflow-navigation.R`
+- `tests/testthat/test-pmslt-workflow.R`
+- `tests/testthat/test-main-lifetable.R`
+
+Deliverables:
+
+- Define a beginner-facing path from `run_pmslt_interventions()` outputs into a
+  main PMSLT lifetable result.
+- Decide and document the first deterministic rule for applying disease
+  mortality and morbidity deltas to all-cause outcomes.
+- Keep PIF-mediated effects and direct disease effects separate until their
+  combined disease-input handoff is explicit.
+- Preserve disease-specific long output for audit and summary.
+
+Boundaries:
+
+- Do not add cost, ICER, equity, PSA, discounting, or age weighting logic.
+- Do not change raw input template schemas unless the bridge proves an
+  essential missing field.
+- Do not let disease modules consume raw `05_disease_epidemiology_raw.csv`.
+
+Acceptance criteria:
+
+- A toy model can run from canonical disease inputs and intervention inputs to
+  comparable BAU and intervention lifetable outputs.
+- Tests cover multi-arm interventions and direct-only, PIF-only, and combined
+  mechanisms where relevant.
+- Output comparison remains explicit about `intervention - BAU` direction.
+
+Handoff:
+
+- Cost and ICER builders can consume stable BAU and intervention lifetable
+  summaries.
+
+### Pact 4: Cost Module And Economic Summaries
+
+Owner scope:
+
+- Turn `12_costs.csv` into deterministic cost outputs and simple economic
+  summaries after the deterministic intervention bridge is stable.
+
+Primary files:
+
+- `R/schema.R`
+- `R/templates.R`
+- `R/input-guide.R`
+- `R/main-lifetable.R` or a new `R/costs.R`
+- `tests/testthat/test-costs.R`
+
+Deliverables:
+
+- Validate disease costs, background costs, currency, price year, and source
+  fields using central schema metadata.
+- Attach disease and background costs to compatible exact-age lifetable rows.
+- Produce total costs by time step, sex, stratum, disease where relevant, and
+  overall.
+- Add simple incremental cost summaries for intervention versus BAU.
+
+Boundaries:
+
+- Do not add discounting or ICER thresholds in the first cost slice unless a
+  separate architecture decision defines them.
+- Do not mix one-off intervention costs with annual disease-management costs
+  without explicit fields and documentation.
+- Do not add PSA sampling in the deterministic cost pact.
+
+Acceptance criteria:
+
+- Cost outputs are reproducible from `12_costs.csv` and deterministic
+  lifetable results.
+- Missing or inconsistent cost fields produce issue-table style diagnostics.
+- Existing non-cost workflows still run when `cost_effectiveness = FALSE`.
+
+Handoff:
+
+- ICER/reporting builders can use deterministic total and incremental cost
+  outputs.
+
+### Pact 5: Equity And Stratum Rate-Ratio Module
+
+Owner scope:
+
+- Connect `11_stratum_rate_ratios.csv` to explicit stratum-specific mortality,
+  morbidity, or disease-rate disaggregation.
+
+Primary files:
+
+- `R/schema.R`
+- `R/raw-validation.R`
+- `R/main-lifetable.R` or a new `R/equity.R`
+- `tests/testthat/test-equity.R`
+
+Deliverables:
+
+- Define which aggregate rates can be disaggregated and which rate-ratio
+  columns apply to each target.
+- Validate rate-ratio completeness across sex, stratum, age, and parameter.
+- Apply disaggregation before main lifetable execution, with audit columns
+  showing original aggregate values and applied ratios.
+
+Boundaries:
+
+- Do not invent population strata outside `pmslt_spec(strata = ...)`.
+- Do not mix equity disaggregation with intervention effect estimation.
+- Do not add distributional cost-effectiveness metrics in this pact.
+
+Acceptance criteria:
+
+- Disaggregated inputs remain compatible with existing exact-age engine
+  requirements.
+- Tests cover complete, missing, and invalid rate-ratio cases.
+- Outputs retain enough provenance for users to see how aggregate rates were
+  converted.
+
+Handoff:
+
+- Deterministic and economic summaries can group by stratum without needing to
+  know the disaggregation internals.
+
+### Pact 6: Aggregation, ICER, And Reporting Layer
+
+Owner scope:
+
+- Provide stable deterministic summaries after BAU, intervention, HALY, and
+  cost outputs are available.
+
+Primary files:
+
+- `R/main-lifetable.R` or a new `R/reporting.R`
+- `R/workflow-navigation.R`
+- `README.md`
+- `tests/testthat/test-reporting.R`
+
+Deliverables:
+
+- Summarise deaths, person-years, YLDs, HALYs, disease quantities, and costs by
+  common reporting groups.
+- Add incremental summaries with a consistent `intervention - BAU` convention.
+- Add ICER calculation only when both incremental costs and incremental HALYs
+  are present.
+- Keep exact-age state internal while supporting reporting-only age bands.
+
+Boundaries:
+
+- Do not add probabilistic intervals.
+- Do not define policy thresholds or decision rules.
+- Do not change engine calculations in the reporting layer.
+
+Acceptance criteria:
+
+- Summary functions reject incompatible BAU/intervention structures clearly.
+- ICER outputs handle zero or negative incremental HALYs explicitly.
+- Tests cover overall and stratified summaries.
+
+Handoff:
+
+- PSA builders can reuse deterministic summary functions for each draw.
+
+### Pact 7: Probabilistic Sensitivity Analysis
+
+Owner scope:
+
+- Add PSA only after deterministic schemas, disease consistency, lifetable,
+  intervention, cost, and reporting contracts are stable.
+
+Primary files:
+
+- New `R/psa.R`
+- `R/schema.R`
+- `tests/testthat/test-psa.R`
+
+Deliverables:
+
+- Define a parameter-draw schema before writing samplers.
+- Sample from stable raw, solver, disease, cost, and intervention uncertainty
+  fields.
+- Run deterministic workflow functions repeatedly without changing their
+  contracts.
+- Return draw-level outputs plus summarised uncertainty intervals.
+
+Boundaries:
+
+- Do not sample from ad hoc data frames that bypass schemas.
+- Do not make deterministic functions depend on PSA internals.
+- Do not require optional Bayesian solver dependencies for non-solver PSA
+  components.
+
+Acceptance criteria:
+
+- PSA results are reproducible with a seed.
+- Draw failures are reported by draw and parameter group without hiding
+  deterministic errors.
+- Deterministic tests remain independent from PSA tests.
+
+Handoff:
+
+- Reporting can add uncertainty intervals without changing deterministic
+  summary semantics.
+
+### Pact 8: Workflow Hardening And Release Readiness
+
+Owner scope:
+
+- Keep the package coherent for beginner users as the modelling layers expand.
+
+Primary files:
+
+- `README.md`
+- `CODEX.md`
+- `R/workflow-navigation.R`
+- `inst/artifacts/todo_plan.md`
+- `inst/artifacts/implementation_log.md`
+- `tests/testthat/test-workflow-navigation.R`
+
+Deliverables:
+
+- Keep `next_pmslt_step()` aligned with implemented workflow stages.
+- Ensure examples move through the intended path:
+  `pmslt_spec()` -> templates -> raw validation -> disease consistency ->
+  interventions -> lifetable -> summaries.
+- Remove obsolete API references when pacts replace earlier paths.
+- Keep public API documentation and architecture decisions consistent.
+
+Boundaries:
+
+- Do not use workflow hardening as a place to smuggle modelling changes.
+- Do not recommend planned functions as if they are implemented.
+
+Acceptance criteria:
+
+- README examples run or are explicitly marked as conceptual.
+- `devtools::test()` passes.
+- `R CMD check` is clean enough for the current development stage.
+- Architecture, todo plan, implementation log, and public documentation do not
+  contradict each other on the beginner workflow.
+
+Handoff:
+
+- New builder agents can read the architecture pacts, choose the next planned
+  pact, and work without re-litigating stable package boundaries.
+
 ## Tests
 
 Files:
@@ -701,6 +1092,7 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 - `run_pmslt_interventions()`
 - `pmslt_spec()`
 - `summarise_pmslt_results()`
+- `solve_disease_consistency()`
 - `dismod_slove()`
 - `smooth_dismod_age_curve()`
 - `validate_pmslt_disease_inputs()`
@@ -709,8 +1101,10 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 
 ## Architecture Decisions To Preserve
 
-1. Keep raw inputs, DisMod outputs, and PMSLT-ready inputs separate.
-2. Treat `pmslt_disease_epi.csv` as the canonical disease input after DisMod.
+1. Keep raw inputs, disease consistency solver outputs, and PMSLT-ready inputs
+   separate.
+2. Treat `pmslt_disease_epi.csv` as the canonical disease input after solver
+   processing.
 3. Keep beginner-facing functions clear and workflow-oriented.
 4. Support multiple intervention arms at template stage, not as a later
    afterthought.
@@ -719,3 +1113,9 @@ R CMD check pmslttools_*.tar.gz --no-manual --no-build-vignettes
 6. Keep mock DisMod functions clearly labelled as teaching-only.
 7. Prefer explicit CSV schemas and validators over implicit assumptions.
 8. Keep documentation close to the template files that students must fill.
+9. Keep `dismod_slove()` as an explicit deterministic modelling option while
+   making `disbayes` the planned primary real consistency solver.
+10. Do not silently reinterpret `excess_mortality_rate` as disease mortality.
+    Disease mortality evidence must be explicit.
+11. Keep canonical PMSLT disease inputs rate-based; solver-specific probability
+    conversions belong inside adapters and audit files.

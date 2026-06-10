@@ -12,3 +12,5 @@ inst/doc
 doc
 Meta
 demo_mock_inputs_raw/
+.agents/
+.claude/

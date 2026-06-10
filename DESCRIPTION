@@ -1,12 +1,12 @@
 Package: pmslttools
 Title: Guided Proportional Multistate Lifetable Modelling Tools
-Version: 0.0.0.9009
+Version: 0.1.0
 Authors@R: person("Upul", "Cooray", email = "upul@example.com", role = c("aut", "cre"))
 Author: Upul Cooray
 Maintainer: Upul Cooray <upul@example.com>
 Description: Beginner-friendly tools for planning proportional multistate
     lifetable simulation models, generating project-specific input templates,
-    preparing DisMod inputs, and running modular PMSLT workflows.
+    solving disease-parameter consistency, and running modular PMSLT workflows.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends:
@@ -19,5 +19,6 @@ Imports:
     stats,
     utils
 Suggests:
+    disbayes,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

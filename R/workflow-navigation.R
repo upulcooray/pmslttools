@@ -5,9 +5,8 @@
 #' change any inputs.
 #'
 #' @param stage Optional workflow stage. Supported values are `"spec"`,
-#'   `"templates"`, `"raw_inputs"`, `"raw_validation"`, `"dismod_lite"`,
-#'   `"pmslt_disease_inputs"`, `"disease_lifetable"`, `"interventions"`, and
-#'   `"halys"`.
+#'   `"templates"`, `"raw_inputs"`, `"raw_validation"`, `"disease_consistency"`,
+#'   `"interventions"`, `"lifetable"`, `"summaries"`, and `"reporting"`.
 #' @param object Optional pmslttools object used to infer the workflow stage
 #'   when `stage` is not supplied. Inference is conservative and currently
 #'   recognises `pmslt_spec`, `raw_input_readiness_check`, and
@@ -55,11 +54,11 @@ supported_next_step_stages <- function() {
     "templates",
     "raw_inputs",
     "raw_validation",
-    "dismod_lite",
-    "pmslt_disease_inputs",
-    "disease_lifetable",
+    "disease_consistency",
     "interventions",
-    "halys"
+    "lifetable",
+    "summaries",
+    "reporting"
   )
 }
 
@@ -132,7 +131,7 @@ next_step_guidance <- function(stage, object = NULL) {
       current_stage = "raw_inputs",
       next_step = "Run the one-step raw input readiness check.",
       recommended_function = "check_raw_input_readiness",
-      why = "Readiness checking validates the completed CSV files and gives a can-proceed signal before DisMod-lite or PMSLT-ready input preparation.",
+      why = "Readiness checking validates the completed CSV files and gives a can-proceed signal before disease consistency solving.",
       example = 'readiness <- check_raw_input_readiness("inputs_raw", spec)'
     ))
   }
@@ -141,53 +140,53 @@ next_step_guidance <- function(stage, object = NULL) {
     return(raw_validation_next_step(object))
   }
 
-  if (stage == "dismod_lite") {
+  if (stage == "disease_consistency") {
     return(new_next_step(
-      current_stage = "dismod_lite",
-      next_step = "Prepare the canonical PMSLT disease input file.",
-      recommended_function = "prepare_pmslt_disease_inputs",
-      why = "Downstream disease lifetable helpers expect a PMSLT-ready disease table with exact integer ages.",
-      example = 'prepare_pmslt_disease_inputs("inputs_raw/mock_dismod_output")'
-    ))
-  }
-
-  if (stage == "pmslt_disease_inputs") {
-    return(new_next_step(
-      current_stage = "pmslt_disease_inputs",
-      next_step = "Validate or read the PMSLT disease inputs, then run the disease lifetable.",
-      recommended_function = "read_pmslt_disease_inputs",
-      why = "The disease lifetable should use the checked post-DisMod `pmslt_disease_epi.csv` file, not the raw age-banded disease template.",
-      example = 'disease_epi <- read_pmslt_disease_inputs("pmslt_disease_epi.csv")'
-    ))
-  }
-
-  if (stage == "disease_lifetable") {
-    return(new_next_step(
-      current_stage = "disease_lifetable",
-      next_step = "Run intervention workflows or integrate disease deltas with the all-cause lifetable where appropriate.",
+      current_stage = "disease_consistency",
+      next_step = "Use the canonical disease input file in the intervention workflow.",
       recommended_function = "run_pmslt_interventions",
-      why = "After disease lifetable outputs exist, the next modelling question is usually how intervention scenarios change those outputs.",
-      example = 'results <- run_pmslt_interventions(disease_epi = "pmslt_disease_epi.csv")'
+      why = "The disease consistency step writes exact-age `pmslt_disease_epi.csv`; downstream intervention functions should consume that file instead of raw age-banded disease templates.",
+      example = 'results <- run_pmslt_interventions(disease_epi = "inputs_raw/disease_consistency_results/pmslt_disease_epi.csv")'
     ))
   }
 
   if (stage == "interventions") {
     return(new_next_step(
       current_stage = "interventions",
-      next_step = "Compare HALY-style health outcomes across compatible outputs.",
-      recommended_function = "compare_halys",
-      why = "Intervention outputs are easier to interpret when summarised as differences in HALYs, person-years, and YLDs.",
-      example = "compare_halys(bau_result, intervention_result)"
+      next_step = "Bridge intervention disease effects into comparable BAU and intervention all-cause lifetables.",
+      recommended_function = "run_pmslt_lifetable_interventions",
+      why = "The disease intervention runner produces disease-level mortality and morbidity deltas; the main lifetable bridge applies those deltas to all-cause outcomes before summaries.",
+      example = "lifetables <- run_pmslt_lifetable_interventions(population, mortality, morbidity, intervention_effects = results, horizon = spec$horizon, spec = spec)"
     ))
   }
 
-  if (stage == "halys") {
+  if (stage == "lifetable") {
     return(new_next_step(
-      current_stage = "halys",
-      next_step = "Review outputs and decide whether later uncertainty, equity, or cost extensions are needed.",
+      current_stage = "lifetable",
+      next_step = "Summarise compatible lifetable outputs.",
+      recommended_function = "summarise_pmslt_results",
+      why = "Summaries are the implemented reporting layer for BAU all-cause outputs, attached disease deltas, and intervention lifetables returned by the bridge.",
+      example = 'summarise_pmslt_results(lifetables$interventions[[1]], by = "age_band")'
+    ))
+  }
+
+  if (stage == "summaries") {
+    return(new_next_step(
+      current_stage = "summaries",
+      next_step = "Review deterministic health outputs, then add cost and ICER reporting only when those outputs exist.",
       recommended_function = "calculate_halys",
-      why = "HALY summaries are a reporting layer; uncertainty, equity, and cost extensions should be considered after the deterministic workflow is understood.",
+      why = "HALY helpers are implemented as a reporting layer over existing lifetable outputs; cost and ICER helpers summarise deterministic outputs without changing the engine.",
       example = 'calculate_halys(result, by = "age_band")'
+    ))
+  }
+
+  if (stage == "reporting") {
+    return(new_next_step(
+      current_stage = "reporting",
+      next_step = "Use deterministic summaries as the stable handoff for later uncertainty or presentation outputs.",
+      recommended_function = "calculate_icers",
+      why = "ICERs are calculated only after incremental costs and incremental HALYs already exist, using the intervention-minus-BAU convention.",
+      example = 'calculate_icers(incremental_results, incremental_cost = "total_cost_difference")'
     ))
   }
 
@@ -207,7 +206,7 @@ raw_validation_next_step <- function(object) {
       current_stage = "raw_validation",
       next_step = "Inspect the validation issues and fix errors before proceeding.",
       recommended_function = "check_raw_input_readiness",
-      why = "Raw validation found blocking issues. DisMod-lite and PMSLT-ready input preparation should wait until `can_proceed` is TRUE.",
+      why = "Raw validation found blocking issues. Disease consistency solving and PMSLT-ready input preparation should wait until `can_proceed` is TRUE.",
       example = "readiness$issues"
     ))
   }
@@ -215,10 +214,10 @@ raw_validation_next_step <- function(object) {
   if (identical(can_proceed, TRUE)) {
     return(new_next_step(
       current_stage = "raw_validation",
-      next_step = "Proceed to DisMod-lite or PMSLT-ready disease input preparation.",
-      recommended_function = "dismod_slove",
+      next_step = "Proceed to disease consistency solving and write PMSLT-ready disease inputs.",
+      recommended_function = "solve_disease_consistency",
       why = "The raw input readiness check indicates that no blocking raw input errors remain.",
-      example = 'dismod_slove("inputs_raw")'
+      example = 'solve_disease_consistency("inputs_raw", solver = "dismod_slove")'
     ))
   }
 
@@ -227,7 +226,7 @@ raw_validation_next_step <- function(object) {
     next_step = "Proceed only if `can_proceed` is TRUE; otherwise inspect and fix the issues.",
     recommended_function = "check_raw_input_readiness",
     why = "Raw validation is the gate between filled CSV templates and downstream disease processing.",
-    example = "if (readiness$can_proceed) dismod_slove(\"inputs_raw\") else readiness$issues"
+    example = "if (readiness$can_proceed) solve_disease_consistency(\"inputs_raw\") else readiness$issues"
   )
 }
 

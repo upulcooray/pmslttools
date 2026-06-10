@@ -25,6 +25,7 @@ test_that("dismod_slove solves prevalence and disaggregates coarse ages", {
     prevalence = NA_real_,
     remission_rate = 0.01,
     excess_mortality_rate = 0.03,
+    disease_mortality_rate = 0.015,
     case_fatality_rate = NA_real_,
     disability_weight = NA_real_,
     source = "test",
@@ -48,6 +49,49 @@ test_that("dismod_slove solves prevalence and disaggregates coarse ages", {
   expect_equal(solved_20$prevalence_source, "solved")
   expect_equal(solved_20$case_fatality_source, "derived_from_excess_mortality")
   expect_true(file.exists(file.path(out, "dismod_lite_results", "dismod_lite_solved_wide.csv")))
+})
+
+test_that("solve_disease_consistency writes valid PMSLT-ready disease inputs with dismod_slove", {
+  spec <- pmslt_spec(
+    intervention = "Tax",
+    mechanism = "risk_factor",
+    diseases = "CHD",
+    risk_factors = "Smoking",
+    risk_categories = list(Smoking = c("Never", "Current")),
+    ages = data.frame(age_start = 20, age_end = 24, age_label = "20-24"),
+    sexes = "male",
+    strata = "total",
+    horizon = 2
+  )
+
+  out <- tempfile("pmslt_inputs_")
+  draft_input_templates(spec, output_dir = out)
+  raw_path <- file.path(out, "05_disease_epidemiology_raw.csv")
+  raw <- utils::read.csv(raw_path, stringsAsFactors = FALSE, na.strings = c("", "NA"))
+  raw$incidence_rate <- 0.02
+  raw$prevalence <- NA_real_
+  raw$remission_rate <- 0.01
+  raw$excess_mortality_rate <- 0.03
+  raw$disease_mortality_rate <- 0.015
+  raw$case_fatality_rate <- NA_real_
+  raw$disability_weight <- 0.20
+  raw$source <- "test"
+  utils::write.csv(raw, raw_path, row.names = FALSE, na = "")
+
+  result <- solve_disease_consistency(out, solver = "dismod_slove")
+  path <- file.path(out, "disease_consistency_results", "pmslt_disease_epi.csv")
+  disease_epi <- read_pmslt_disease_inputs(path)
+
+  expect_equal(result$solver, "dismod_slove")
+  expect_true(file.exists(path))
+  expect_true(file.exists(file.path(out, "disease_consistency_results", "dismod_lite_solved_wide.csv")))
+  expect_equal(names(disease_epi), pmslttools:::pmslt_disease_epi_schema()$columns$column)
+  expect_true(all(disease_epi$age == floor(disease_epi$age)))
+  expect_equal(
+    disease_epi$prevalence_initial[disease_epi$time_step == 0],
+    rep(0.02 / (0.02 + 0.01 + 0.03), sum(disease_epi$time_step == 0))
+  )
+  expect_true(validate_pmslt_disease_inputs(disease_epi))
 })
 
 test_that("dismod_slove prefers filled long input over raw input", {

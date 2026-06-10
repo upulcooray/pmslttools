@@ -34,14 +34,14 @@ fill_required_template_values <- function(data, template_name, spec) {
     if (column == "pYLD_BAU") data[[column]] <- 0.10
     if (column == "expected_years_remaining") data[[column]] <- 80 - as.numeric(data$age)
     if (column %in% c("disability_weight", "coverage")) data[[column]] <- 0.10
-    if (column %in% c("incidence_rate", "prevalence", "remission_rate", "excess_mortality_rate", "case_fatality_rate")) {
+    if (column %in% c("incidence_rate", "prevalence", "remission_rate", "excess_mortality_rate", "disease_mortality_rate", "case_fatality_rate")) {
       data[[column]] <- if (column == "prevalence") 0.10 else 0.01
     }
     if (column %in% c("incidence_apc", "cfr_apc", "prevalence_apc")) data[[column]] <- 0
     if (column %in% c("incidence_rr", "cfr_rr", "morbidity_rr", "rr", "rr_lower", "rr_upper")) data[[column]] <- 1
     if (column %in% c("prevalence_BAU", "prevalence_intervention")) data[[column]] <- 1
     if (column == "reference_category") data[[column]] <- "Reference"
-    if (column %in% c("acmr_rate_ratio", "morbidity_rate_ratio")) data[[column]] <- 1
+    if (column %in% c("acmr_rate_ratio", "morbidity_rate_ratio", "rate_ratio")) data[[column]] <- 1
     if (column == "reference_stratum") data[[column]] <- spec$strata[[1]]
     if (column %in% c("disease_cost", "background_cost")) data[[column]] <- 100
     if (column == "currency") data[[column]] <- "AUD"
@@ -204,6 +204,22 @@ test_that("invalid allowed values from the schema are reported", {
   ))
 })
 
+test_that("mortality is an allowed disease-consistency skeleton parameter", {
+  spec <- valid_direct_spec()
+  input_dir <- write_valid_raw_inputs(spec)
+  dismod <- read_raw_csv(input_dir, "06_dismod_input_skeleton.csv")
+  dismod$parameter[[1]] <- "mortality"
+  write_raw_csv(input_dir, "06_dismod_input_skeleton.csv", dismod)
+
+  issues <- validate_raw_inputs(input_dir, spec)
+
+  expect_false(any(
+    issues$file == "06_dismod_input_skeleton.csv" &
+      issues$row == 1 &
+      issues$column == "parameter"
+  ))
+})
+
 test_that("missing required values are reported", {
   spec <- valid_direct_spec()
   input_dir <- write_valid_raw_inputs(spec)
@@ -241,12 +257,14 @@ test_that("invalid bounds are reported for rates and proportions", {
   write_raw_csv(input_dir, "02_all_cause_mortality.csv", mortality)
   disease <- read_raw_csv(input_dir, "05_disease_epidemiology_raw.csv")
   disease$prevalence[[1]] <- 1.5
+  disease$disease_mortality_rate[[1]] <- -0.01
   write_raw_csv(input_dir, "05_disease_epidemiology_raw.csv", disease)
 
   issues <- validate_raw_inputs(input_dir, spec)
 
   expect_true(any(issues$file == "02_all_cause_mortality.csv" & issues$column == "acmr_BAU" & grepl("negative", issues$message)))
   expect_true(any(issues$file == "05_disease_epidemiology_raw.csv" & issues$column == "prevalence" & grepl("between 0 and 1", issues$message)))
+  expect_true(any(issues$file == "05_disease_epidemiology_raw.csv" & issues$column == "disease_mortality_rate" & grepl("negative", issues$message)))
 })
 
 test_that("multiple simultaneous issues accumulate", {
