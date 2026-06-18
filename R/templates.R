@@ -187,12 +187,22 @@ all_cause_morbidity_template <- function(base_grid) {
 }
 
 life_expectancy_template <- function(spec) {
-  data.frame(
+  grid <- expand.grid(
     age = spec$ages$age_start,
+    sex = spec$sexes,
+    stratum = spec$strata,
+    stringsAsFactors = FALSE
+  )
+  grid <- grid[c("age", "sex", "stratum")]
+  transform(
+    grid,
     expected_years_remaining = NA_real_,
     source = NA_character_,
-    notes = "Used for YLL and DALY calculations.",
-    stringsAsFactors = FALSE
+    notes = paste(
+      "Used for YLL and DALY calculations.",
+      "Enter sex- and stratum-specific values, or repeat a common reference",
+      "life table across groups if a single standard is used."
+    )
   )
 }
 

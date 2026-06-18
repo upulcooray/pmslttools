@@ -19,6 +19,10 @@ equity, and probabilistic-sensitivity layers into one validated package state.
 
 * `pmslt_spec()` / `draft_input_templates()` generate project-specific CSV
   templates with a written input guide.
+* `04_life_expectancy.csv` now carries `sex` and `stratum` columns (one row per
+  age, sex, and stratum), allowing sex- or stratum-specific reference life
+  tables. Use identical values across groups when a single common standard
+  applies.
 * `validate_raw_inputs()`, `check_raw_input_readiness()`, and
   `summarise_raw_input_issues()` give plain-language readiness diagnostics.
 * `next_pmslt_step()` points modellers at the next workflow action.

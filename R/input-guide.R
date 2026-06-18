@@ -254,17 +254,20 @@ template_file_dictionary <- function() {
     ),
     "04_life_expectancy" = list(
       purpose = "Collects reference life expectancy used to calculate years of life lost.",
-      rows = "One row per age start in the model.",
+      rows = "One row per age start, sex, and stratum combination.",
       columns = list(
         age = "Generated age value. It should match the start of each model age band.",
-        expected_years_remaining = "Required for DALY/YLL calculations. Enter remaining life expectancy at this age from the chosen reference life table.",
+        sex = id_sex,
+        stratum = id_stratum,
+        expected_years_remaining = "Required for DALY/YLL calculations. Enter remaining life expectancy at this age, sex, and stratum from the chosen reference life table. If a single common standard is used, repeat the same value across sexes and strata.",
         source = id_source,
-        notes = "Record the life table used, country or standard population, year, and whether values are sex-specific or common across sexes."
+        notes = "Record the life table used, country or standard population, year, and whether values are sex-specific, stratum-specific, or common across groups."
       ),
       checks = c(
         "`expected_years_remaining` should be non-negative.",
-        "Values should generally decline as age increases.",
-        "Use the same reference life table consistently across the project."
+        "Values should generally decline as age increases within each sex and stratum.",
+        "Use the same reference life table consistently across the project.",
+        "For a single common standard, enter identical values across sexes and strata rather than leaving rows blank."
       )
     ),
     "05_disease_epidemiology_raw" = list(
